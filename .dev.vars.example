@@ -1,3 +1,5 @@
 # Local development example only.
-# Never commit the real API key.
+# Never commit the real API keys or Telegram credentials.
 TWELVE_DATA_API_KEY=replace_me
+TELEGRAM_BOT_TOKEN=replace_me
+TELEGRAM_CHAT_ID=replace_me
