@@ -5,5 +5,22 @@
   "assets": {
     "directory": "./",
     "binding": "ASSETS"
+  },
+  "triggers": {
+    "crons": ["*/5 * * * *"]
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "TRADE_STATE",
+        "class_name": "WajidTradeState"
+      }
+    ]
+  },
+  "exports": {
+    "WajidTradeState": {
+      "type": "durable-object",
+      "storage": "sqlite"
+    }
   }
 }
