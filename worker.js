@@ -36,7 +36,6 @@ async function runInterval(interval, env) {
   const current = await getState(state);
   const bucket = current.intervals[interval] || { active: null, trades: [], lastSignalId: null, lastCandleTime: null };
 
-  // Strategy rule migration: never mix legacy delayed-entry trades with the new next-candle history.
   if (bucket.ruleVersion !== RULE_VERSION) {
     bucket.active = null;
     bucket.trades = [];
@@ -126,7 +125,7 @@ async function syncTelegramSubscribers(env) {
     if (command === '/start' || command === '/subscribe') {
       if (existing) Object.assign(existing, base, { active: true });
       else telegram.subscribers.push({ ...base, active: true });
-      await telegramMessage(env, chatId, '✅ WAJID Swing Liquidity subscription is ACTIVE. You will receive future XAU/USD 5M and 15M signals and trade results.');
+      await telegramMessage(env, chatId, '✅ WAJID Swing Liquidity subscription is ACTIVE. You will receive future XAU/USD 5M and 15M signals and trade results.\n\n📊 /daily = today stats\n📅 /weekly = this week stats\n📈 /stats = today + week');
       changed = true;
     } else if (command === '/stop' || command === '/unsubscribe') {
       if (existing) Object.assign(existing, base, { active: false });
@@ -136,6 +135,14 @@ async function syncTelegramSubscribers(env) {
     } else if (command === '/status') {
       const active = existing?.active === true;
       await telegramMessage(env, chatId, active ? '🟢 Subscription status: ACTIVE' : '⚪ Subscription status: OFF. Send /start to subscribe.');
+    } else if (command === '/daily' || command === '/today') {
+      await telegramMessage(env, chatId, formatPeriodReport(state, 'daily'));
+    } else if (command === '/weekly' || command === '/week') {
+      await telegramMessage(env, chatId, formatPeriodReport(state, 'weekly'));
+    } else if (command === '/stats') {
+      await telegramMessage(env, chatId, `${formatPeriodReport(state, 'daily')}\n\n${formatPeriodReport(state, 'weekly')}`);
+    } else if (command === '/help') {
+      await telegramMessage(env, chatId, '📊 WAJID Swing Liquidity commands\n\n/start — subscribe\n/stop — unsubscribe\n/status — subscription status\n/daily — today signals + W/L + win rate\n/weekly — this week signals + W/L + win rate\n/stats — today + this week\n/help — show commands');
     }
   }
 
@@ -143,11 +150,78 @@ async function syncTelegramSubscribers(env) {
   if (changed || data.result.length) await putState(stub, state);
 }
 
+function formatPeriodReport(state, period) {
+  const now = new Date();
+  const start = period === 'daily' ? startOfUtcDay(now) : startOfUtcWeek(now);
+  const end = period === 'daily' ? new Date(start.getTime() + 86400000) : new Date(start.getTime() + 7 * 86400000);
+  const trades = collectTrades(state).filter(t => {
+    const ts = Number(t.signalTime || t.createdAt || 0) * (Number(t.signalTime || 0) < 100000000000 ? 1000 : 1);
+    return ts >= start.getTime() && ts < end.getTime();
+  });
+
+  const signals = trades.length;
+  const wins = trades.filter(t => t.result === 'WIN').length;
+  const losses = trades.filter(t => t.result === 'LOSS').length;
+  const open = trades.filter(t => !t.result || t.status !== 'CLOSED').length;
+  const decided = wins + losses;
+  const winRate = decided ? ((wins / decided) * 100).toFixed(1) : '0.0';
+  const totalR = trades.reduce((sum, t) => sum + (Number.isFinite(Number(t.realizedR)) ? Number(t.realizedR) : 0), 0);
+  const five = trades.filter(t => t.interval === '5min');
+  const fifteen = trades.filter(t => t.interval === '15min');
+  const label = period === 'daily' ? `📊 DAILY REPORT · ${utcDateLabel(start)}` : `📅 WEEKLY REPORT · ${utcDateLabel(start)} → ${utcDateLabel(new Date(end.getTime() - 86400000))}`;
+
+  return [
+    `🔥 WAJID SWING LIQUIDITY`,
+    label,
+    `XAU/USD`,
+    '',
+    `📌 Signals: ${signals}`,
+    `✅ Win: ${wins}`,
+    `❌ Loss: ${losses}`,
+    `⏳ Open: ${open}`,
+    `🎯 Win Rate: ${winRate}%`,
+    `📈 Total R: ${totalR >= 0 ? '+' : ''}${totalR.toFixed(2)}R`,
+    '',
+    `5M: ${five.length} signals · ${five.filter(t => t.result === 'WIN').length}W / ${five.filter(t => t.result === 'LOSS').length}L`,
+    `15M: ${fifteen.length} signals · ${fifteen.filter(t => t.result === 'WIN').length}W / ${fifteen.filter(t => t.result === 'LOSS').length}L`,
+    '',
+    `🔒 Server-controlled results`,
+    `🕐 Report timezone: UTC`
+  ].join('\n');
+}
+
+function collectTrades(state) {
+  const all = [];
+  for (const interval of INTERVALS) {
+    const bucket = state?.intervals?.[interval];
+    if (!bucket) continue;
+    if (Array.isArray(bucket.trades)) all.push(...bucket.trades);
+    if (bucket.active) all.push(bucket.active);
+  }
+  const seen = new Set();
+  return all.filter(t => t?.id && !seen.has(t.id) && (seen.add(t.id), true));
+}
+
+function startOfUtcDay(date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+function startOfUtcWeek(date) {
+  const day = date.getUTCDay();
+  const diff = day === 0 ? -6 : 1 - day;
+  const start = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  start.setUTCDate(start.getUTCDate() + diff);
+  return start;
+}
+
+function utcDateLabel(date) {
+  return date.toISOString().slice(0, 10);
+}
+
 async function fetchClosedCandles(interval, apiKey) {
   const params = new URLSearchParams({ symbol: SYMBOL, interval, outputsize: String(CONFIG.outputSize), order: 'ASC', timezone: 'UTC', apikey: apiKey });
   const response = await fetch(`${DATA_URL}?${params}`);
   const data = await response.json();
-  if (!response.ok || data?.status === 'error' || data?.code) throw new Error(data?.message || 'Twelve Data request failed');
   const seconds = interval === '5min' ? 300 : 900;
   const now = Math.floor(Date.now() / 1000);
   const candles = (data.values || []).map(x => ({ time: Math.floor(x.timestamp ? Number(x.timestamp) : Date.parse(String(x.datetime || '')) / 1000), open: Number(x.open), high: Number(x.high), low: Number(x.low), close: Number(x.close), volume: Number(x.volume || 0) })).filter(x => [x.time, x.open, x.high, x.low, x.close].every(Number.isFinite));
@@ -156,6 +230,7 @@ async function fetchClosedCandles(interval, apiKey) {
   const seen = new Set();
   for (const candle of candles) if (!seen.has(candle.time)) { seen.add(candle.time); unique.push(candle); }
   while (unique.length && unique.at(-1).time + seconds > now) unique.pop();
+  if (!response.ok || data?.status === 'error' || data?.code) throw new Error(data?.message || 'Twelve Data request failed');
   return unique;
 }
 
