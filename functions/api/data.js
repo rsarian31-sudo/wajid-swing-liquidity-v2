@@ -69,7 +69,7 @@ async function getPersistentBucket(env, interval) {
 
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
-  if (request.method !== 'GET') return json({ success:false, error:'Method not allowed' },405);
+  if (request.method !== 'GET') return json({success:false, error:'Method not allowed'},405);
   try {
     const u = new URL(request.url);
     const symbol = 'XAU/USD';
@@ -108,17 +108,21 @@ export async function onRequest(context) {
 
     const persistent = await getPersistentBucket(env, interval);
     const active = persistent?.active || null;
-    const trades = persistent?.trades?.length
-      ? [...persistent.trades, ...(active ? [toHistoryOpen(active)] : [])]
+    const hasPersistentState = !!persistent && (persistent.active !== undefined || Array.isArray(persistent.trades));
+    const trades = hasPersistentState
+      ? [...(Array.isArray(persistent.trades) ? persistent.trades : []), ...(active ? [toHistoryOpen(active)] : [])]
       : fallbackTrades;
     const visibleSignal = active ? signalFromActive(active) : a.signal;
     const visiblePlan = active ? planFromActive(active) : a.tradePlan;
+    const visibleDiagnostics = active
+      ? { ...a.diagnostics, confirmation: active.direction, latestSweep: active.sweep?.type || a.diagnostics.latestSweep, latestPrice: unique.at(-1)?.close || a.diagnostics.latestPrice }
+      : a.diagnostics;
 
     const wins=trades.filter(x=>x.result==='WIN').length;
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,diagnostics:a.diagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,diagnostics:visibleDiagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
