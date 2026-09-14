@@ -1,1 +1,169 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b12"><title>Wajid Swing Liquidity</title><link rel="stylesheet" href="/styles.css"></head><body><header class="top"><div><b>WAJID <span>SWING LIQUIDITY</span></b><small>XAU/USD · Canonical Server Strategy</small></div><div id="status" class="status">CONNECTING</div></header><main><section class="hero"><article class="card signal"><small>15M CURRENT SIGNAL</small><h1 id="signal">WAIT</h1><p id="signalMeta">Waiting for server data</p><div class="metrics"><div><label>Probability</label><strong id="prob">—</strong></div><div><label>Score</label><strong id="score">—</strong></div><div><label>Price</label><strong id="price">—</strong></div><div><label>ATR</label><strong id="atr">—</strong></div></div></article><article class="card"><small>TRADE PLAN</small><h2 id="planState">No active trade</h2><div class="levels"><div>Entry<strong id="entry">—</strong></div><div>Stop Loss<strong id="sl">—</strong></div><div>TP1 · 1R<strong id="tp1">—</strong></div><div>TP2 · 2R WIN<strong id="tp2">—</strong></div><div>TP3 · 3R<strong id="tp3">—</strong></div><div>Risk<strong id="risk">—</strong></div></div></article></section><nav><button class="active" data-tf="15min">15M</button><button data-tf="5min">5M</button><button id="refresh">Refresh</button></nav><section class="card chart-card"><div class="panel-title"><b>Market Structure</b><small>Liquidity · sweeps · confirmed trade context</small></div><div id="chart"></div></section><section class="bottom"><article class="card"><div class="panel-title"><b>Diagnostics</b></div><div id="diagnostics" class="diag"></div></article><article class="card"><div class="panel-title"><b>Trade History</b><small>TP2 = WIN · SL = LOSS</small></div><div id="summary" class="summary"></div><div class="table-wrap"><table><thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>RESULT</th><th>R</th></tr></thead><tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody></table></div></article></section></main><script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script><script src="/app.js"></script></body></html>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#050b14">
+  <meta name="description" content="Wajid Swing Liquidity — XAU/USD canonical server strategy">
+  <title>Wajid Swing Liquidity</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <div class="page-glow"></div>
+  <header class="top shell">
+    <div class="brand-block">
+      <div class="brand">WAJID <span>SWING LIQUIDITY</span></div>
+      <div class="brand-sub">XAU/USD · Canonical Server Strategy</div>
+      <div class="brand-note">Institutional logic. Real market data. No guesswork.</div>
+    </div>
+    <div class="top-right">
+      <div class="quote">“Discipline Today<br><span>Better Trades Tomorrow”</span></div>
+      <div class="status-row">
+        <div id="status" class="status">CONNECTING</div>
+        <div class="server-pill"><i></i> Server Online</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell dashboard">
+    <section class="left-column">
+      <article class="card signal-card">
+        <div class="eyebrow" id="signalLabel">15M CURRENT SIGNAL</div>
+        <div class="signal-line">
+          <div>
+            <h1 id="signal">WAIT</h1>
+            <p id="signalMeta">Waiting for server data</p>
+          </div>
+          <div class="tf-mini">
+            <button data-tf="15min" class="active">15M</button>
+            <button data-tf="5min">5M</button>
+          </div>
+        </div>
+        <div class="metrics">
+          <div><label>Probability</label><strong id="prob">—</strong></div>
+          <div><label>Score</label><strong id="score">—</strong></div>
+          <div><label>Price</label><strong id="price">—</strong></div>
+          <div><label>ATR</label><strong id="atr">—</strong></div>
+        </div>
+      </article>
+
+      <article class="card plan-card">
+        <div class="section-heading"><div><span class="accent-label">TRADE PLAN</span><h2 id="planState">No active trade</h2></div><span class="lock-badge">SERVER CONTROLLED</span></div>
+        <div class="levels">
+          <div><span>Entry</span><strong id="entry">—</strong></div>
+          <div><span>Stop Loss</span><strong id="sl">—</strong></div>
+          <div><span>TP1 · 1R</span><strong id="tp1">—</strong></div>
+          <div><span>TP2 · 2R WIN</span><strong id="tp2">—</strong></div>
+          <div><span>TP3 · 3R</span><strong id="tp3">—</strong></div>
+          <div><span>Risk</span><strong id="risk">—</strong></div>
+        </div>
+      </article>
+
+      <div class="toolbar">
+        <div class="timeframe-buttons">
+          <button data-tf="15min" class="active">15M</button>
+          <button data-tf="5min">5M</button>
+        </div>
+        <button id="refresh" class="refresh-btn">↻ <span>Refresh</span></button>
+      </div>
+
+      <article class="card chart-card">
+        <div class="panel-title">
+          <div><b>Market Structure</b><small>Liquidity · sweeps · confirmed trade context</small></div>
+          <span class="chart-live">LIVE</span>
+        </div>
+        <div id="chart"></div>
+      </article>
+
+      <article class="card diagnostics-card">
+        <div class="panel-title"><div><b>Diagnostics</b><small>Server-side strategy state</small></div></div>
+        <div id="diagnostics" class="diag"></div>
+      </article>
+
+      <article class="card history-card">
+        <div class="panel-title"><div><b>Trade History</b><small>TP2 = WIN · SL = LOSS</small></div></div>
+        <div id="summary" class="summary"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>RESULT</th><th>R</th></tr></thead>
+            <tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <aside class="right-column">
+      <article class="card info-card">
+        <div class="card-icon blue">◈</div>
+        <h2>About This Strategy</h2>
+        <p>Wajid Swing Liquidity is a price-action based system focused on liquidity sweeps, market structure and confirmed trade setups.</p>
+        <div class="feature-grid">
+          <span>◉ Liquidity Sweeps</span><span>⌁ Market Structure</span>
+          <span>◇ Risk Management</span><span>◌ No Repainting</span>
+          <span>▣ Server-Side Signals</span><span>◈ Real Market Data</span>
+        </div>
+      </article>
+
+      <article class="card rules-card">
+        <div class="card-icon purple">☷</div>
+        <h2>Trading Rules</h2>
+        <ol>
+          <li>Wait for liquidity sweep (swing high/low)</li>
+          <li>Look for confirmation (structure + volume)</li>
+          <li>Follow the generated trade plan</li>
+          <li>Respect the risk filter</li>
+          <li>Be patient — no overtrading</li>
+        </ol>
+      </article>
+
+      <article class="card quote-card">
+        <div class="quote-mark">“</div>
+        <blockquote>Patience is not inactivity,<br>it’s a part of the strategy.</blockquote>
+        <cite>— WAJID AI</cite>
+      </article>
+
+      <article class="card market-card">
+        <div class="card-icon gold">▥</div>
+        <h2>Market Info</h2>
+        <div class="info-rows">
+          <div><span>Symbol</span><b>XAU/USD</b></div>
+          <div><span>Timeframe</span><b id="marketTf">15 Minutes</b></div>
+          <div><span>Latest Price</span><b id="marketPrice">—</b></div>
+          <div><span>ATR</span><b id="marketAtr">—</b></div>
+          <div><span>Candles</span><b id="marketCandles">—</b></div>
+        </div>
+      </article>
+
+      <article class="card performance-card">
+        <div class="card-icon blue">◉</div>
+        <h2>Performance</h2>
+        <div class="perf-grid">
+          <div><span>Trades</span><b id="perfTrades">0</b></div>
+          <div><span>Win</span><b id="perfWin">0</b></div>
+          <div><span>Loss</span><b id="perfLoss">0</b></div>
+          <div><span>Win Rate</span><b id="perfRate">0%</b></div>
+          <div><span>Total R</span><b id="perfR">0.00R</b></div>
+        </div>
+      </article>
+
+      <article class="card telegram-card">
+        <div class="telegram-icon">➤</div>
+        <div><h2>Stay Updated</h2><p>Telegram notifications can be connected to the canonical server signal.</p></div>
+        <div class="coming-soon">TELEGRAM · COMING SOON</div>
+      </article>
+    </aside>
+  </main>
+
+  <footer class="footer shell">
+    <div><b>WAJID <span>SWING LIQUIDITY</span></b><small>XAU/USD · Canonical Server Strategy</small></div>
+    <strong>TRADE SMART. STAY DISCIPLINED.</strong>
+    <small>Built for disciplined traders.</small>
+  </footer>
+
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="/app.js"></script>
+</body>
+</html>
