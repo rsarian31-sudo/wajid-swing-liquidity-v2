@@ -5,6 +5,7 @@ import { WajidTradeState } from './state.js';
 
 const INTERVALS = ['5min', '15min'];
 const SYMBOL = 'XAU/USD';
+const RULE_VERSION = 'next-candle-v1';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
@@ -34,6 +35,16 @@ async function runInterval(interval, env) {
   const state = env.TRADE_STATE.get(id);
   const current = await getState(state);
   const bucket = current.intervals[interval] || { active: null, trades: [], lastSignalId: null, lastCandleTime: null };
+
+  // Strategy rule migration: never mix legacy delayed-entry trades with the new next-candle history.
+  if (bucket.ruleVersion !== RULE_VERSION) {
+    bucket.active = null;
+    bucket.trades = [];
+    bucket.lastSignalId = null;
+    bucket.lastCandleTime = null;
+    bucket.ruleVersion = RULE_VERSION;
+  }
+
   const telegram = ensureTelegramState(current, env);
 
   if (!bucket.trades.length) {
