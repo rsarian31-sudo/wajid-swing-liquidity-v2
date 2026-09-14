@@ -1,6 +1,7 @@
 import { CONFIG, analyze, buildHistory } from '../../src/strategy.js';
 
 const ALLOWED = new Set(['5min','15min']);
+const INTERVAL_SECONDS = { '5min': 300, '15min': 900 };
 
 function activeHistoryTrade(signal, plan, candles) {
   if (!signal || signal.direction === 'WAIT' || !plan) return null;
@@ -57,16 +58,24 @@ export async function onRequest(context) {
     for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
     if (!unique.length) throw Error('No market candles returned');
 
-    const a=analyze(unique);
-    const trades=buildHistory(unique,a.swings,symbol);
-    const active=activeHistoryTrade(a.signal,a.tradePlan,unique);
+    // Never use the still-forming candle for signal/entry calculations.
+    // This keeps a confirmed entry locked across page refreshes and prevents intrabar repainting.
+    const now = Math.floor(Date.now() / 1000);
+    const intervalSeconds = INTERVAL_SECONDS[interval];
+    const closedCandles = unique.filter(c => c.time + intervalSeconds <= now);
+    const analysisCandles = closedCandles.length ? closedCandles : unique.slice(0, -1);
+    if (!analysisCandles.length) throw Error('Not enough completed market candles');
+
+    const a=analyze(analysisCandles);
+    const trades=buildHistory(analysisCandles,a.swings,symbol);
+    const active=activeHistoryTrade(a.signal,a.tradePlan,analysisCandles);
     if (active && !trades.some((t) => t.id === active.id || (t.signalTime === active.signalTime && t.direction === active.direction && t.result === 'OPEN'))) trades.push(active);
 
     const wins=trades.filter(x=>x.result==='WIN').length;
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:a.signal,tradePlan:a.tradePlan,diagnostics:a.diagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:trades.length?Number((wins/trades.length*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:a.signal,tradePlan:a.tradePlan,diagnostics:a.diagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:trades.length?Number((wins/trades.length*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
