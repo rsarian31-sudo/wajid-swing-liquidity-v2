@@ -85,12 +85,19 @@
 
       <article class="card history-card">
         <div class="panel-title"><div><b>Trade History</b><small>TP2 = WIN · SL = LOSS</small></div></div>
+        <div class="history-tabs" role="tablist" aria-label="History views">
+          <button class="history-tab active" data-history-view="all">All History</button>
+          <button class="history-tab" data-history-view="daily">Daily History</button>
+          <button class="history-tab" data-history-view="weekly">Weekly Report</button>
+        </div>
         <div id="summary" class="summary"></div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>RESULT</th><th>R</th></tr></thead>
-            <tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody>
-          </table>
+        <div id="historyView" class="history-view">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>RESULT</th><th>R</th></tr></thead>
+              <tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody>
+            </table>
+          </div>
         </div>
       </article>
     </section>
@@ -112,7 +119,7 @@
         <h2>Trading Rules</h2>
         <ol>
           <li>Wait for liquidity sweep (swing high/low)</li>
-          <li>Look for confirmation (structure + volume)</li>
+          <li>Enter only on the immediately following 5M candle</li>
           <li>Follow the generated trade plan</li>
           <li>Respect the risk filter</li>
           <li>Be patient — no overtrading</li>
