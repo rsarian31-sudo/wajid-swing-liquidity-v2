@@ -2,6 +2,33 @@ import { CONFIG, analyze, buildHistory } from '../../src/strategy.js';
 
 const ALLOWED = new Set(['5min','15min']);
 
+function activeHistoryTrade(signal, plan, candles) {
+  if (!signal || signal.direction === 'WAIT' || !plan) return null;
+  const entryCandle = candles.find((c) => c.time === signal.time) || candles.at(-1);
+  const sweep = signal.sweep;
+  return {
+    id: `${signal.time}-${signal.direction}-ACTIVE`,
+    direction: signal.direction,
+    signalTime: signal.time,
+    swingTime: sweep?.level?.time ?? null,
+    swingType: sweep?.level?.type ?? null,
+    swingPrice: Number.isFinite(Number(sweep?.level?.price)) ? Number(Number(sweep.level.price).toFixed(2)) : null,
+    entry: Number(Number(plan.entry).toFixed(2)),
+    stopLoss: Number(Number(plan.stopLoss).toFixed(2)),
+    tp1: Number(Number(plan.tp1).toFixed(2)),
+    tp2: Number(Number(plan.tp2).toFixed(2)),
+    tp3: Number(Number(plan.tp3).toFixed(2)),
+    risk: Number(Number(plan.risk).toFixed(2)),
+    realizedR: 0,
+    result: 'OPEN',
+    status: 'OPEN',
+    exit: null,
+    exitTime: null,
+    reason: 'Active confirmed signal; TP2 or SL not reached yet',
+    entryCandleTime: entryCandle?.time ?? signal.time
+  };
+}
+
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
   if (request.method !== 'GET') return json({ success:false, error:'Method not allowed' },405);
@@ -32,6 +59,9 @@ export async function onRequest(context) {
 
     const a=analyze(unique);
     const trades=buildHistory(unique,a.swings,symbol);
+    const active=activeHistoryTrade(a.signal,a.tradePlan,unique);
+    if (active && !trades.some((t) => t.id === active.id || (t.signalTime === active.signalTime && t.direction === active.direction && t.result === 'OPEN'))) trades.push(active);
+
     const wins=trades.filter(x=>x.result==='WIN').length;
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
