@@ -1,0 +1,101 @@
+name: Wire Telegram Webhook
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/workflows/telegram-webhook.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch worker for instant Telegram webhook
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('worker.js')
+          s = p.read_text()
+          if 'TELEGRAM_WEBHOOK_URL' in s:
+              print('Webhook patch already present')
+              raise SystemExit(0)
+
+          s = s.replace("const TELEGRAM_API = 'https://api.telegram.org/bot';", "const TELEGRAM_API = 'https://api.telegram.org/bot';\nconst TELEGRAM_WEBHOOK_URL = 'https://liquidity-v2.rsarian31.workers.dev/telegram/webhook';")
+          s = s.replace("    if (url.pathname === '/api/health') return healthRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });", "    if (url.pathname === '/api/health') return healthRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });\n    if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);")
+          s = s.replace("    if (env.TELEGRAM_BOT_TOKEN && env.TRADE_STATE) await syncTelegramSubscribers(env);", "    if (env.TELEGRAM_BOT_TOKEN && env.TRADE_STATE) await ensureTelegramWebhook(env);")
+
+          marker = "async function syncTelegramSubscribers(env) {"
+          helper = r'''async function ensureTelegramWebhook(env) {
+  if (!env.TELEGRAM_BOT_TOKEN) return;
+  try {
+    await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/setWebhook`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: TELEGRAM_WEBHOOK_URL, allowed_updates: ['message'], drop_pending_updates: false })
+    });
+  } catch (_) {}
+}
+
+async function telegramWebhook(request, env) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TRADE_STATE) return new Response('OK');
+  try {
+    const update = await request.json();
+    const message = update?.message;
+    if (!message || message.chat?.type !== 'private' || !message.text) return new Response('OK');
+
+    const stub = env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+    const state = await getState(stub);
+    const telegram = ensureTelegramState(state, env);
+    const command = normalizeTelegramCommand(message.text);
+    const chatId = String(message.chat.id);
+    const existing = telegram.subscribers.find(s => String(s.chatId) === chatId);
+    const base = { chatId, username: message.from?.username || null, firstName: message.from?.first_name || null, updatedAt: Date.now() };
+
+    if (command === '/start') {
+      if (existing) Object.assign(existing, base, { active: true });
+      else telegram.subscribers.push({ ...base, active: true });
+      await telegramMessage(env, chatId, '✅ WAJID Swing Liquidity is ACTIVE.\n\nUse the buttons below to view Daily, Weekly and All Stats.\n\nYou will receive future XAU/USD 5M and 15M signals and trade results automatically.');
+    } else if (command === '/stop') {
+      if (existing) Object.assign(existing, base, { active: false });
+      else telegram.subscribers.push({ ...base, active: false });
+      await telegramMessage(env, chatId, '🛑 WAJID Swing Liquidity subscription is OFF. Send /start to subscribe again.');
+    } else if (command === '/status') {
+      await telegramMessage(env, chatId, existing?.active === true ? '🟢 Subscription status: ACTIVE\n\nSignal notifications: ON' : '⚪ Subscription status: OFF.\n\nSend /start to subscribe.');
+    } else if (command === '/daily') {
+      await telegramMessage(env, chatId, formatPeriodReport(state, 'daily'));
+    } else if (command === '/weekly') {
+      await telegramMessage(env, chatId, formatPeriodReport(state, 'weekly'));
+    } else if (command === '/stats') {
+      await telegramMessage(env, chatId, `${formatPeriodReport(state, 'daily')}\n\n${formatPeriodReport(state, 'weekly')}`);
+    } else if (command === '/help') {
+      await telegramMessage(env, chatId, '📊 WAJID Swing Liquidity\n\n📊 Daily Stats — today signals + W/L + win rate\n📅 Weekly Report — this week signals + W/L + win rate\n📈 All Stats — today + this week\n🔄 Refresh Stats — refresh current statistics\n🟢 Status — subscription status\n\nCommands: /start /stop /daily /weekly /stats /status /help');
+    }
+
+    state.telegram = telegram;
+    await putState(stub, state);
+    return new Response('OK');
+  } catch (_) {
+    return new Response('OK');
+  }
+}
+
+'''
+          if marker not in s:
+              raise SystemExit('sync marker not found')
+          s = s.replace(marker, helper + marker, 1)
+          p.write_text(s)
+      - name: Commit worker patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add worker.js
+          git diff --cached --quiet && exit 0
+          git commit -m 'Switch Telegram to instant webhook handling'
+          git push
