@@ -1,0 +1,12 @@
+**/node_modules
+**/.git
+**/.wrangler
+worker.js
+wrangler.json
+wrangler.jsonc
+functions/
+src/
+.dev.vars
+.env*
+README.md
+.gitignore
