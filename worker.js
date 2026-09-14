@@ -20,7 +20,7 @@ export default {
     if (env.TELEGRAM_BOT_TOKEN && env.TRADE_STATE) await syncTelegramSubscribers(env);
     const minute = new Date(controller.scheduledTime).getUTCMinutes();
     const intervals = minute % 15 === 0 ? INTERVALS : ['5min'];
-    for (const interval of intervals) ctx.waitUntil(runInterval(interval, env));
+    for (const interval of intervals) await runInterval(interval, env);
   }
 };
 
