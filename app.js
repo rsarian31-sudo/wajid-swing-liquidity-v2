@@ -125,19 +125,20 @@ async function load() {
     $('marketAtr').textContent = fmt(data.diagnostics?.atr);
     $('marketCandles').textContent = data.market?.candleCount ?? candles.length;
 
+    const active = data.activeTrade;
     const plan = data.tradePlan;
-    const activeDirection = signal.direction && signal.direction !== 'WAIT' ? signal.direction : null;
-    $('planState').textContent = plan && activeDirection ? `${activeDirection} ACTIVE` : 'No active trade';
-    $('entry').textContent = plan ? fmt(plan.entry) : '—';
-    $('sl').textContent = plan ? fmt(plan.stopLoss) : '—';
-    $('tp1').textContent = plan ? fmt(plan.tp1) : '—';
-    $('tp2').textContent = plan ? fmt(plan.tp2) : '—';
-    $('tp3').textContent = plan ? fmt(plan.tp3) : '—';
-    $('risk').textContent = plan ? fmt(plan.risk) : '—';
+    const activeDirection = active?.direction || null;
+    $('planState').textContent = active && plan && activeDirection ? `${activeDirection} ACTIVE` : 'No active trade';
+    $('entry').textContent = active && plan ? fmt(plan.entry) : '—';
+    $('sl').textContent = active && plan ? fmt(plan.stopLoss) : '—';
+    $('tp1').textContent = active && plan ? fmt(plan.tp1) : '—';
+    $('tp2').textContent = active && plan ? fmt(plan.tp2) : '—';
+    $('tp3').textContent = active && plan ? fmt(plan.tp3) : '—';
+    $('risk').textContent = active && plan ? fmt(plan.risk) : '—';
 
-    setFlat(entrySeries, candles, plan?.entry);
-    setFlat(stopSeries, candles, plan?.stopLoss);
-    setFlat(tp2Series, candles, plan?.tp2);
+    setFlat(entrySeries, candles, active && plan ? plan.entry : null);
+    setFlat(stopSeries, candles, active && plan ? plan.stopLoss : null);
+    setFlat(tp2Series, candles, active && plan ? plan.tp2 : null);
 
     renderHistory(data.history);
     renderDiagnostics(data.diagnostics);
