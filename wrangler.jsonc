@@ -19,8 +19,7 @@
   },
   "exports": {
     "WajidTradeState": {
-      "type": "durable-object",
-      "storage": "sqlite"
+      "type": "sqlite"
     }
   }
 }
