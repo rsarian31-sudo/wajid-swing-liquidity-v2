@@ -126,7 +126,8 @@ async function load() {
     $('marketCandles').textContent = data.market?.candleCount ?? candles.length;
 
     const plan = data.tradePlan;
-    $('planState').textContent = plan ? `${plan.direction} ACTIVE` : 'No active trade';
+    const activeDirection = signal.direction && signal.direction !== 'WAIT' ? signal.direction : null;
+    $('planState').textContent = plan && activeDirection ? `${activeDirection} ACTIVE` : 'No active trade';
     $('entry').textContent = plan ? fmt(plan.entry) : '—';
     $('sl').textContent = plan ? fmt(plan.stopLoss) : '—';
     $('tp1').textContent = plan ? fmt(plan.tp1) : '—';
