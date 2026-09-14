@@ -67,9 +67,8 @@ async function runInterval(interval, env) {
     : null;
 
   if (!bucket.active && signalId && bucket.lastSignalId !== signalId && plan) {
-    const active = makeActiveTrade(interval, signal, plan, analysis);
+    let active = makeActiveTrade(interval, signal, plan, analysis);
     bucket.lastSignalId = signalId;
-    bucket.active = active;
     const telegramResult = await sendTelegram(env, {
       type: 'SIGNAL',
       interval,
@@ -77,9 +76,10 @@ async function runInterval(interval, env) {
       probability: signal.probability,
       score: signal.score
     });
-    if (!telegramResult && !env.TELEGRAM_BOT_TOKEN) {
-      // Signal state remains stored even when Telegram is not configured yet.
+    if (telegramResult?.message_id) {
+      active = { ...active, telegramMessageId: telegramResult.message_id };
     }
+    bucket.active = active;
 
     const events = advanceActiveTrade(active, candles);
     for (const event of events.notifications) await sendTelegram(env, event);
@@ -270,12 +270,23 @@ async function sendTelegram(env, event) {
     return false;
   }
 
+  const payload = { chat_id: env.TELEGRAM_CHAT_ID, text };
+  if (event.type !== 'SIGNAL' && Number.isFinite(Number(trade.telegramMessageId))) {
+    payload.reply_parameters = {
+      message_id: Number(trade.telegramMessageId),
+      allow_sending_without_reply: true
+    };
+  }
+
   const response = await fetch(`https://api.telegram.org/bot${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: env.TELEGRAM_CHAT_ID, text })
+    body: JSON.stringify(payload)
   });
-  return response.ok;
+  if (!response.ok) return false;
+
+  const data = await response.json();
+  return data?.ok && data?.result ? data.result : false;
 }
 
 export { WajidTradeState };
