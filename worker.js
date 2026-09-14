@@ -100,6 +100,31 @@ function ensureTelegramState(state, env) {
   return state.telegram;
 }
 
+function telegramKeyboard() {
+  return {
+    keyboard: [
+      [{ text: '📊 Daily Stats' }, { text: '📅 Weekly Report' }],
+      [{ text: '📈 All Stats' }, { text: '🔄 Refresh Stats' }],
+      [{ text: '🟢 Status' }, { text: '❓ Help' }]
+    ],
+    resize_keyboard: true,
+    is_persistent: true,
+    one_time_keyboard: false
+  };
+}
+
+function normalizeTelegramCommand(text) {
+  const value = String(text || '').trim().toLowerCase();
+  if (value === '📊 daily stats' || value === '/daily' || value === '/today') return '/daily';
+  if (value === '📅 weekly report' || value === '/weekly' || value === '/week') return '/weekly';
+  if (value === '📈 all stats' || value === '🔄 refresh stats' || value === '/stats') return '/stats';
+  if (value === '🟢 status' || value === '/status') return '/status';
+  if (value === '❓ help' || value === '/help') return '/help';
+  if (value === '/start' || value === '/subscribe') return '/start';
+  if (value === '/stop' || value === '/unsubscribe') return '/stop';
+  return value.split(/\s+/)[0].split('@')[0];
+}
+
 async function syncTelegramSubscribers(env) {
   const id = env.TRADE_STATE.idFromName('xauusd');
   const stub = env.TRADE_STATE.get(id);
@@ -117,32 +142,32 @@ async function syncTelegramSubscribers(env) {
     telegram.offset = Number(update.update_id) + 1;
     const message = update.message;
     if (!message || message.chat?.type !== 'private' || !message.text) continue;
-    const command = message.text.trim().split(/\s+/)[0].toLowerCase().split('@')[0];
+    const command = normalizeTelegramCommand(message.text);
     const chatId = String(message.chat.id);
     const existing = telegram.subscribers.find(s => String(s.chatId) === chatId);
     const base = { chatId, username: message.from?.username || null, firstName: message.from?.first_name || null, updatedAt: Date.now() };
 
-    if (command === '/start' || command === '/subscribe') {
+    if (command === '/start') {
       if (existing) Object.assign(existing, base, { active: true });
       else telegram.subscribers.push({ ...base, active: true });
-      await telegramMessage(env, chatId, '✅ WAJID Swing Liquidity subscription is ACTIVE. You will receive future XAU/USD 5M and 15M signals and trade results.\n\n📊 /daily = today stats\n📅 /weekly = this week stats\n📈 /stats = today + week');
+      await telegramMessage(env, chatId, '✅ WAJID Swing Liquidity is ACTIVE.\n\nUse the buttons below to view Daily, Weekly and All Stats.\n\nYou will receive future XAU/USD 5M and 15M signals and trade results automatically.');
       changed = true;
-    } else if (command === '/stop' || command === '/unsubscribe') {
+    } else if (command === '/stop') {
       if (existing) Object.assign(existing, base, { active: false });
       else telegram.subscribers.push({ ...base, active: false });
       await telegramMessage(env, chatId, '🛑 WAJID Swing Liquidity subscription is OFF. Send /start to subscribe again.');
       changed = true;
     } else if (command === '/status') {
       const active = existing?.active === true;
-      await telegramMessage(env, chatId, active ? '🟢 Subscription status: ACTIVE' : '⚪ Subscription status: OFF. Send /start to subscribe.');
-    } else if (command === '/daily' || command === '/today') {
+      await telegramMessage(env, chatId, active ? '🟢 Subscription status: ACTIVE\n\nSignal notifications: ON' : '⚪ Subscription status: OFF.\n\nSend /start to subscribe.');
+    } else if (command === '/daily') {
       await telegramMessage(env, chatId, formatPeriodReport(state, 'daily'));
-    } else if (command === '/weekly' || command === '/week') {
+    } else if (command === '/weekly') {
       await telegramMessage(env, chatId, formatPeriodReport(state, 'weekly'));
     } else if (command === '/stats') {
       await telegramMessage(env, chatId, `${formatPeriodReport(state, 'daily')}\n\n${formatPeriodReport(state, 'weekly')}`);
     } else if (command === '/help') {
-      await telegramMessage(env, chatId, '📊 WAJID Swing Liquidity commands\n\n/start — subscribe\n/stop — unsubscribe\n/status — subscription status\n/daily — today signals + W/L + win rate\n/weekly — this week signals + W/L + win rate\n/stats — today + this week\n/help — show commands');
+      await telegramMessage(env, chatId, '📊 WAJID Swing Liquidity\n\n📊 Daily Stats — today signals + W/L + win rate\n📅 Weekly Report — this week signals + W/L + win rate\n📈 All Stats — today + this week\n🔄 Refresh Stats — refresh current statistics\n🟢 Status — subscription status\n\nCommands: /start /stop /daily /weekly /stats /status /help');
     }
   }
 
@@ -283,7 +308,7 @@ async function sendTelegram(env, event, subscribers) {
 
   const messageIds = {};
   for (const subscriber of activeSubscribers) {
-    const payload = { chat_id: subscriber.chatId, text };
+    const payload = { chat_id: subscriber.chatId, text, reply_markup: telegramKeyboard() };
     const original = trade.telegramMessageIds?.[String(subscriber.chatId)];
     if (event.type !== 'SIGNAL' && Number.isFinite(Number(original))) payload.reply_parameters = { message_id: Number(original), allow_sending_without_reply: true };
     try {
@@ -297,7 +322,7 @@ async function sendTelegram(env, event, subscribers) {
 }
 
 async function telegramMessage(env, chatId, text) {
-  await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text }) });
+  await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ chat_id: chatId, text, reply_markup: telegramKeyboard() }) });
 }
 
 export { WajidTradeState };
