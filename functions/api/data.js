@@ -30,6 +30,14 @@ function activeHistoryTrade(signal, plan, candles) {
   };
 }
 
+function waitSignal(a) {
+  return {
+    value: 'WAIT', direction: 'WAIT', probability: 0, score: 0, time: null, price: null,
+    sweep: null, confirmation: null,
+    rejection: a.signal?.direction && a.tradePlan ? 'Signal detected; waiting for server activation' : (a.signal?.rejection || null)
+  };
+}
+
 function signalFromActive(active) {
   if (!active) return null;
   return {
@@ -103,17 +111,17 @@ export async function onRequest(context) {
 
     const a = analyze(analysisCandles);
     const fallbackTrades = buildHistory(analysisCandles,a.swings,symbol);
-    const fallbackActive = activeHistoryTrade(a.signal,a.tradePlan,analysisCandles);
-    if (fallbackActive && !fallbackTrades.some((t) => t.id === fallbackActive.id || (t.signalTime === fallbackActive.signalTime && t.direction === fallbackActive.direction && t.result === 'OPEN'))) fallbackTrades.push(fallbackActive);
 
     const persistent = await getPersistentBucket(env, interval);
     const active = persistent?.active || null;
     const hasPersistentState = !!persistent && (persistent.active !== undefined || Array.isArray(persistent.trades));
-    const trades = hasPersistentState
-      ? [...(Array.isArray(persistent.trades) ? persistent.trades : []), ...(active ? [toHistoryOpen(active)] : [])]
-      : fallbackTrades;
-    const visibleSignal = active ? signalFromActive(active) : a.signal;
-    const visiblePlan = active ? planFromActive(active) : a.tradePlan;
+    const persistedTrades = Array.isArray(persistent?.trades) ? persistent.trades : [];
+    const trades = hasPersistentState && persistedTrades.length
+      ? [...persistedTrades, ...(active ? [toHistoryOpen(active)] : [])]
+      : [...fallbackTrades, ...(active ? [toHistoryOpen(active)] : [])];
+
+    const visibleSignal = active ? signalFromActive(active) : waitSignal(a);
+    const visiblePlan = active ? planFromActive(active) : null;
     const visibleDiagnostics = active
       ? { ...a.diagnostics, confirmation: active.direction, latestSweep: active.sweep?.type || a.diagnostics.latestSweep, latestPrice: unique.at(-1)?.close || a.diagnostics.latestPrice }
       : a.diagnostics;
@@ -122,7 +130,7 @@ export async function onRequest(context) {
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,diagnostics:visibleDiagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
