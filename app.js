@@ -5,27 +5,29 @@ let loading = false;
 const chart = LightweightCharts.createChart($('chart'), {
   width: $('chart').clientWidth,
   height: $('chart').clientHeight,
-  layout: { background: { color: '#070b12' }, textColor: '#8794a6' },
-  grid: { vertLines: { color: '#17212d' }, horzLines: { color: '#17212d' } },
-  rightPriceScale: { borderColor: '#263342' },
-  timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#263342' },
+  layout: { background: { color: '#06101a' }, textColor: '#8799aa' },
+  grid: { vertLines: { color: '#102233' }, horzLines: { color: '#102233' } },
+  rightPriceScale: { borderColor: '#1b3448' },
+  timeScale: { timeVisible: true, secondsVisible: false, borderColor: '#1b3448' },
   crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
 });
 
 const candleSeries = chart.addCandlestickSeries({
-  upColor: '#39d995', downColor: '#ff6d7e',
-  borderUpColor: '#39d995', borderDownColor: '#ff6d7e',
-  wickUpColor: '#39d995', wickDownColor: '#ff6d7e'
+  upColor: '#35dfa0', downColor: '#ff6578',
+  borderUpColor: '#35dfa0', borderDownColor: '#ff6578',
+  wickUpColor: '#35dfa0', wickDownColor: '#ff6578'
 });
-const swingHighSeries = chart.addLineSeries({ color: '#e3b65d', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-const swingLowSeries = chart.addLineSeries({ color: '#70a9ff', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-const entrySeries = chart.addLineSeries({ color: '#39d995', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'ENTRY' });
-const stopSeries = chart.addLineSeries({ color: '#ff6d7e', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'SL' });
-const tp2Series = chart.addLineSeries({ color: '#e3b65d', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'TP2' });
+const swingHighSeries = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+const swingLowSeries = chart.addLineSeries({ color: '#4f9cff', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+const entrySeries = chart.addLineSeries({ color: '#35dfa0', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'ENTRY' });
+const stopSeries = chart.addLineSeries({ color: '#ff6578', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'SL' });
+const tp2Series = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'TP2' });
 
 const fmt = (x) => Number.isFinite(Number(x)) ? Number(x).toFixed(2) : '—';
 const time = (x) => x ? new Date(Number(x) * 1000).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
+const tfLabel = () => interval === '5min' ? '5M' : '15M';
+const tfLong = () => interval === '5min' ? '5 Minutes' : '15 Minutes';
 
 function setFlat(series, data, value) {
   if (Number.isFinite(Number(value)) && data.length > 1) {
@@ -38,6 +40,14 @@ function setStatus(text, live = false) {
   $('status').className = live ? 'status live' : 'status';
 }
 
+function syncTimeframeUI() {
+  document.querySelectorAll('[data-tf]').forEach((button) => {
+    button.classList.toggle('active', button.dataset.tf === interval);
+  });
+  $('signalLabel').textContent = `${tfLabel()} CURRENT SIGNAL`;
+  $('marketTf').textContent = tfLong();
+}
+
 function renderHistory(history) {
   const summary = history?.summary || {};
   $('summary').innerHTML = [
@@ -48,6 +58,12 @@ function renderHistory(history) {
     ['Total R', `${fmt(summary.totalR)}R`, ''],
     ['Open', summary.open ?? 0, 'open']
   ].map(([label, value, cls]) => `<span class="${cls}">${label} <b>${esc(value)}</b></span>`).join('');
+
+  $('perfTrades').textContent = summary.totalTrades ?? 0;
+  $('perfWin').textContent = summary.wins ?? 0;
+  $('perfLoss').textContent = summary.losses ?? 0;
+  $('perfRate').textContent = `${summary.winRate ?? 0}%`;
+  $('perfR').textContent = `${fmt(summary.totalR)}R`;
 
   const rows = (history?.trades || []).slice().reverse().slice(0, 50);
   $('history').innerHTML = rows.length ? rows.map((t) => {
@@ -92,7 +108,7 @@ async function load() {
       time: Number(x.time),
       position: x.type === 'BULLISH' ? 'belowBar' : 'aboveBar',
       shape: x.type === 'BULLISH' ? 'arrowUp' : 'arrowDown',
-      color: x.type === 'BULLISH' ? '#39d995' : '#ff6d7e',
+      color: x.type === 'BULLISH' ? '#35dfa0' : '#ff6578',
       text: x.type === 'BULLISH' ? 'SWEEP ↑' : 'SWEEP ↓'
     })).filter((x) => Number.isFinite(x.time)).sort((a, b) => a.time - b.time);
     candleSeries.setMarkers(markers);
@@ -105,6 +121,9 @@ async function load() {
     $('score').textContent = signal.score ?? 0;
     $('price').textContent = fmt(data.market?.price);
     $('atr').textContent = fmt(data.diagnostics?.atr);
+    $('marketPrice').textContent = fmt(data.market?.price);
+    $('marketAtr').textContent = fmt(data.diagnostics?.atr);
+    $('marketCandles').textContent = data.market?.candleCount ?? candles.length;
 
     const plan = data.tradePlan;
     $('planState').textContent = plan ? `${plan.direction} ACTIVE` : 'No active trade';
@@ -121,8 +140,8 @@ async function load() {
 
     renderHistory(data.history);
     renderDiagnostics(data.diagnostics);
-    $('status').textContent = `LIVE · ${time(data.market?.lastCandleTime)}`;
-    $('status').className = 'status live';
+    syncTimeframeUI();
+    setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`, true);
     chart.timeScale().fitContent();
   } catch (error) {
     setStatus('ERROR');
@@ -136,12 +155,12 @@ document.querySelectorAll('[data-tf]').forEach((button) => {
   button.addEventListener('click', () => {
     if (button.dataset.tf === interval) return;
     interval = button.dataset.tf;
-    document.querySelectorAll('[data-tf]').forEach((x) => x.classList.remove('active'));
-    button.classList.add('active');
+    syncTimeframeUI();
     load();
   });
 });
 $('refresh').addEventListener('click', load);
 window.addEventListener('resize', () => chart.applyOptions({ width: $('chart').clientWidth, height: $('chart').clientHeight }));
+syncTimeframeUI();
 load();
 setInterval(load, 60000);
