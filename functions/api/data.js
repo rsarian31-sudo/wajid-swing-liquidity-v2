@@ -30,6 +30,43 @@ function activeHistoryTrade(signal, plan, candles) {
   };
 }
 
+function signalFromActive(active) {
+  if (!active) return null;
+  return {
+    value: active.direction,
+    direction: active.direction,
+    probability: active.probability ?? 0,
+    score: active.score ?? 0,
+    time: active.signalTime,
+    price: active.entry,
+    sweep: active.sweep || null,
+    confirmation: { confirmed: true, direction: active.direction, time: active.signalTime, price: active.entry },
+    rejection: null
+  };
+}
+
+function planFromActive(active) {
+  if (!active) return null;
+  return {
+    entry: active.entry,
+    stopLoss: active.stopLoss,
+    tp1: active.tp1,
+    tp2: active.tp2,
+    tp3: active.tp3,
+    risk: active.risk,
+    rr: { tp1: 1, tp2: 2, tp3: 3 }
+  };
+}
+
+async function getPersistentBucket(env, interval) {
+  if (!env.TRADE_STATE) return null;
+  const id = env.TRADE_STATE.idFromName('xauusd');
+  const stub = env.TRADE_STATE.get(id);
+  const response = await stub.fetch('https://state/');
+  const state = await response.json();
+  return state?.intervals?.[interval] || null;
+}
+
 export async function onRequest(context) {
   const { request, env, waitUntil } = context;
   if (request.method !== 'GET') return json({ success:false, error:'Method not allowed' },405);
@@ -58,27 +95,58 @@ export async function onRequest(context) {
     for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
     if (!unique.length) throw Error('No market candles returned');
 
-    // Never use the still-forming candle for signal/entry calculations.
-    // This keeps a confirmed entry locked across page refreshes and prevents intrabar repainting.
     const now = Math.floor(Date.now() / 1000);
     const intervalSeconds = INTERVAL_SECONDS[interval];
     const closedCandles = unique.filter(c => c.time + intervalSeconds <= now);
     const analysisCandles = closedCandles.length ? closedCandles : unique.slice(0, -1);
     if (!analysisCandles.length) throw Error('Not enough completed market candles');
 
-    const a=analyze(analysisCandles);
-    const trades=buildHistory(analysisCandles,a.swings,symbol);
-    const active=activeHistoryTrade(a.signal,a.tradePlan,analysisCandles);
-    if (active && !trades.some((t) => t.id === active.id || (t.signalTime === active.signalTime && t.direction === active.direction && t.result === 'OPEN'))) trades.push(active);
+    const a = analyze(analysisCandles);
+    const fallbackTrades = buildHistory(analysisCandles,a.swings,symbol);
+    const fallbackActive = activeHistoryTrade(a.signal,a.tradePlan,analysisCandles);
+    if (fallbackActive && !fallbackTrades.some((t) => t.id === fallbackActive.id || (t.signalTime === fallbackActive.signalTime && t.direction === fallbackActive.direction && t.result === 'OPEN'))) fallbackTrades.push(fallbackActive);
+
+    const persistent = await getPersistentBucket(env, interval);
+    const active = persistent?.active || null;
+    const trades = persistent?.trades?.length
+      ? [...persistent.trades, ...(active ? [toHistoryOpen(active)] : [])]
+      : fallbackTrades;
+    const visibleSignal = active ? signalFromActive(active) : a.signal;
+    const visiblePlan = active ? planFromActive(active) : a.tradePlan;
 
     const wins=trades.filter(x=>x.result==='WIN').length;
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:a.signal,tradePlan:a.tradePlan,diagnostics:a.diagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:trades.length?Number((wins/trades.length*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,diagnostics:a.diagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
   } catch(e) { return json({success:false,error:e?.message || 'Market data error'},500); }
 }
+
+function toHistoryOpen(active) {
+  return {
+    id: active.id,
+    interval: active.interval,
+    direction: active.direction,
+    signalTime: active.signalTime,
+    swingTime: active.sweep?.level?.time ?? null,
+    swingType: active.sweep?.level?.type ?? null,
+    swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep.level.price).toFixed(2)) : null,
+    entry: active.entry,
+    stopLoss: active.stopLoss,
+    tp1: active.tp1,
+    tp2: active.tp2,
+    tp3: active.tp3,
+    risk: active.risk,
+    realizedR: 0,
+    result: 'OPEN',
+    status: 'OPEN',
+    exit: null,
+    exitTime: null,
+    reason: active.tp1Hit ? 'TP1 reached; TP2 and SL not reached yet' : 'Active confirmed signal; TP2 and SL not reached yet'
+  };
+}
+
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Access-Control-Allow-Origin':'*'}})}
