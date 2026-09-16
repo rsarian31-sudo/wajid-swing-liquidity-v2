@@ -1,4 +1,5 @@
 import { CONFIG, analyze, buildHistory } from '../../src/strategy.js';
+import { analyzeVolumeOB } from '../../src/volume-ob-strategy.js';
 
 const ALLOWED = new Set(['5min','15min']);
 const INTERVAL_SECONDS = { '5min': 300, '15min': 900 };
@@ -110,6 +111,7 @@ export async function onRequest(context) {
     if (!analysisCandles.length) throw Error('Not enough completed market candles');
 
     const a = analyze(analysisCandles);
+    const volumeOB = analyzeVolumeOB(analysisCandles);
     const fallbackTrades = buildHistory(analysisCandles,a.swings,symbol);
 
     const persistent = await getPersistentBucket(env, interval);
@@ -130,7 +132,7 @@ export async function onRequest(context) {
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
@@ -145,7 +147,7 @@ function toHistoryOpen(active) {
     signalTime: active.signalTime,
     swingTime: active.sweep?.level?.time ?? null,
     swingType: active.sweep?.level?.type ?? null,
-    swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep.level.price).toFixed(2)) : null,
+    swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep?.level?.price).toFixed(2)) : null,
     entry: active.entry,
     stopLoss: active.stopLoss,
     tp1: active.tp1,
