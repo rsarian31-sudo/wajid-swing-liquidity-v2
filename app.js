@@ -46,8 +46,12 @@ const tfLabel = () => interval === '5min' ? '5M' : '15M';
 const tfLong = () => interval === '5min' ? '5 Minutes' : '15 Minutes';
 
 function setFlat(series, data, value) {
-  if (Number.isFinite(Number(value)) && data.length > 1) series.setData([{ time: data[0].time, value: Number(value) }, { time: data[data.length - 1].time, value: Number(value) }]);
-  else series.setData([]);
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0 && data.length > 1) {
+    series.setData([{ time: data[0].time, value: numericValue }, { time: data[data.length - 1].time, value: numericValue }]);
+  } else {
+    series.setData([]);
+  }
 }
 function setZoneLine(series, candles, zone, field) {
   if (!zone || !candles.length || !Number.isFinite(Number(zone[field]))) { series.setData([]); return; }
@@ -178,10 +182,22 @@ async function load() {
     $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
     $('signalMeta').textContent=signal.time?`Confirmed ${time(signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
     $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
-    const plan=data.tradePlan, activeDirection=active?.direction||null;
-    $('planState').textContent=active&&plan&&activeDirection?`${activeDirection} ACTIVE`:'No active trade';
-    $('entry').textContent=active&&plan?fmt(plan.entry):'—'; $('sl').textContent=active&&plan?fmt(plan.stopLoss):'—'; $('tp1').textContent=active&&plan?fmt(plan.tp1):'—'; $('tp2').textContent=active&&plan?fmt(plan.tp2):'—'; $('tp3').textContent=active&&plan?fmt(plan.tp3):'—'; $('risk').textContent=active&&plan?fmt(plan.risk):'—';
-    setFlat(entrySeries,candles,active&&plan?plan.entry:null); setFlat(stopSeries,candles,active&&plan?plan.stopLoss:null); setFlat(tp2Series,candles,active&&plan?plan.tp2:null);
+
+    const plan=data.tradePlan;
+    const activeDirection=active?.direction||null;
+    const planFields=[plan?.entry,plan?.stopLoss,plan?.tp1,plan?.tp2,plan?.tp3];
+    const validPlan=Boolean(active&&activeDirection&&plan&&planFields.every(v=>Number.isFinite(Number(v))&&Number(v)>0));
+    $('planState').textContent=validPlan?`${activeDirection} ACTIVE`:'No active trade';
+    $('entry').textContent=validPlan?fmt(plan.entry):'—';
+    $('sl').textContent=validPlan?fmt(plan.stopLoss):'—';
+    $('tp1').textContent=validPlan?fmt(plan.tp1):'—';
+    $('tp2').textContent=validPlan?fmt(plan.tp2):'—';
+    $('tp3').textContent=validPlan?fmt(plan.tp3):'—';
+    $('risk').textContent=validPlan?fmt(plan.risk):'—';
+    setFlat(entrySeries,candles,validPlan?plan.entry:null);
+    setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
+    setFlat(tp2Series,candles,validPlan?plan.tp2:null);
+
     renderHistory(data.history); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
   } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
   finally { loading=false; }
