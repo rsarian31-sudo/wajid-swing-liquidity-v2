@@ -23,13 +23,19 @@ export default {
     if (env.TELEGRAM_BOT_TOKEN && env.TRADE_STATE) await ensureTelegramWebhook(env);
     const minute = new Date(controller.scheduledTime).getUTCMinutes();
     const intervals = minute % 15 === 0 ? INTERVALS : ['5min'];
-    for (const interval of intervals) await runInterval(interval, env);
+    for (const interval of intervals) {
+      try {
+        await runInterval(interval, env);
+      } catch (_) {
+        // Keep the scheduler alive so one provider/interval failure does not block the others.
+      }
+    }
   }
 };
 
 async function runInterval(interval, env) {
-  if (!env.TWELVE_DATA_API_KEY || !env.TRADE_STATE) return;
-  const candles = await fetchClosedCandles(interval, env.TWELVE_DATA_API_KEY);
+  if (!env.TRADE_STATE) return;
+  const candles = await fetchClosedCandles(interval, env);
   if (candles.length < 50) return;
 
   const analysis = analyze(candles);
@@ -266,20 +272,40 @@ function utcDateLabel(date) {
   return date.toISOString().slice(0, 10);
 }
 
-async function fetchClosedCandles(interval, apiKey) {
-  const params = new URLSearchParams({ symbol: SYMBOL, interval, outputsize: String(CONFIG.outputSize), order: 'ASC', timezone: 'UTC', apikey: apiKey });
-  const response = await fetch(`${DATA_URL}?${params}`);
-  const data = await response.json();
-  const seconds = interval === '5min' ? 300 : 900;
-  const now = Math.floor(Date.now() / 1000);
-  const candles = (data.values || []).map(x => ({ time: Math.floor(x.timestamp ? Number(x.timestamp) : Date.parse(String(x.datetime || '')) / 1000), open: Number(x.open), high: Number(x.high), low: Number(x.low), close: Number(x.close), volume: Number(x.volume || 0) })).filter(x => [x.time, x.open, x.high, x.low, x.close].every(Number.isFinite));
-  candles.sort((a, b) => a.time - b.time);
-  const unique = [];
-  const seen = new Set();
-  for (const candle of candles) if (!seen.has(candle.time)) { seen.add(candle.time); unique.push(candle); }
-  while (unique.length && unique.at(-1).time + seconds > now) unique.pop();
-  if (!response.ok || data?.status === 'error' || data?.code) throw new Error(data?.message || 'Twelve Data request failed');
-  return unique;
+async function fetchClosedCandles(interval, env) {
+  const keys = [
+    env.TWELVE_DATA_API_KEY,
+    env.TWELVE_DATA_API_KEY_2,
+    env.TWELVE_DATA_API_KEY_3,
+    env.TWELVE_DATA_API_KEY_4
+  ].map(k => String(k || '').trim()).filter(Boolean);
+
+  let lastError = null;
+  for (const apiKey of keys) {
+    try {
+      const params = new URLSearchParams({ symbol: SYMBOL, interval, outputsize: String(CONFIG.outputSize), order: 'ASC', timezone: 'UTC', apikey: apiKey });
+      const response = await fetch(`${DATA_URL}?${params}`);
+      const data = await response.json();
+      if (!response.ok || data?.status === 'error' || data?.code) {
+        throw new Error(data?.message || 'Twelve Data request failed');
+      }
+
+      const seconds = interval === '5min' ? 300 : 900;
+      const now = Math.floor(Date.now() / 1000);
+      const candles = (data.values || []).map(x => ({ time: Math.floor(x.timestamp ? Number(x.timestamp) : Date.parse(String(x.datetime || '')) / 1000), open: Number(x.open), high: Number(x.high), low: Number(x.low), close: Number(x.close), volume: Number(x.volume || 0) })).filter(x => [x.time, x.open, x.high, x.low, x.close].every(Number.isFinite));
+      candles.sort((a, b) => a.time - b.time);
+      const unique = [];
+      const seen = new Set();
+      for (const candle of candles) if (!seen.has(candle.time)) { seen.add(candle.time); unique.push(candle); }
+      while (unique.length && unique.at(-1).time + seconds > now) unique.pop();
+      if (unique.length < 50) throw new Error('Twelve Data returned insufficient closed candles');
+      return unique;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('No Twelve Data API key configured');
 }
 
 function makeActiveTrade(interval, signal, plan, analysis) {
