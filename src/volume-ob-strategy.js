@@ -22,20 +22,18 @@ function sma(values, i, length) {
 
 function pivotLow(c, i, len) {
   const p = i - len;
-  if (p < len || i + 0 >= c.length) return null;
+  if (p < len || p + len >= c.length) return null;
   for (let j = p - len; j <= p + len; j++) {
-    if (j === p) continue;
-    if (c[j].low < c[p].low) return null;
+    if (j !== p && c[j].low < c[p].low) return null;
   }
   return c[p].low;
 }
 
 function pivotHigh(c, i, len) {
   const p = i - len;
-  if (p < len || i + 0 >= c.length) return null;
+  if (p < len || p + len >= c.length) return null;
   for (let j = p - len; j <= p + len; j++) {
-    if (j === p) continue;
-    if (c[j].high > c[p].high) return null;
+    if (j !== p && c[j].high > c[p].high) return null;
   }
   return c[p].high;
 }
@@ -43,10 +41,11 @@ function pivotHigh(c, i, len) {
 function windowBuyRatio(c, i, lookbackLen) {
   let buy = 0;
   let sell = 0;
-  const start = Math.max(0, i - lookbackLen);
-  for (let j = start; j <= i; j++) {
-    const v = Number(c[j].volume || 0);
-    if (c[j].close >= c[j].open) buy += v;
+  for (let j = 0; j <= lookbackLen; j++) {
+    const k = i - j;
+    if (k < 0) continue;
+    const v = Number(c[k].volume || 0);
+    if (c[k].close >= c[k].open) buy += v;
     else sell += v;
   }
   const total = buy + sell;
@@ -71,13 +70,15 @@ function buildTrend(c) {
       trend[i] = 1;
       continue;
     }
+
     const src = (c[i].high + c[i].low) / 2;
     let ub = src + CONFIG.stMult * atr[i];
     let lb = src - CONFIG.stMult * atr[i];
     const prevUb = i > 0 && upper[i - 1] != null ? upper[i - 1] : 0;
     const prevLb = i > 0 && lower[i - 1] != null ? lower[i - 1] : 0;
     const prevClose = i > 0 ? c[i - 1].close : null;
-    ub = ub < prevUb || prevClose > prevUb ? ub : prevUb;
+
+    ub = ub < prevUb || prevClose < null || prevClose > prevUb ? ub : prevUb;
     lb = lb > prevLb || prevClose < prevLb ? lb : prevLb;
     upper[i] = ub;
     lower[i] = lb;
@@ -94,64 +95,71 @@ function buildTrend(c) {
 }
 
 export function analyzeVolumeOB(c) {
-  const n = c.length;
   const t = buildTrend(c);
   let active = null;
   const signals = [];
   const zones = [];
 
-  for (let i = 0; i < n; i++) {
+  const closeActive = (endIndex, broken = false) => {
+    if (!active) return;
+    active.endIndex = endIndex;
+    active.endTime = c[endIndex]?.time ?? active.startTime;
+    active.broken = broken;
+    zones.push({ ...active });
+    active = null;
+  };
+
+  const createZone = (trend, pivotIndex, i) => {
+    const atr = Number(t.atr[i] || 0);
+    if (!(atr > 0)) return;
+
+    const obTop = trend === 1
+      ? Math.min(c[pivotIndex].open, c[pivotIndex].close)
+      : Math.max(c[pivotIndex].open, c[pivotIndex].close);
+    const obBot = trend === 1 ? obTop - atr : obTop;
+    const top = trend === 1 ? obTop : obTop + atr;
+    const bottom = trend === 1 ? obBot : obBot;
+
+    if (overlap(top, bottom, active?.top, active?.bottom)) return;
+    if (active) closeActive(pivotIndex, false);
+
+    const buyRatio = windowBuyRatio(c, i, CONFIG.pivotLen);
+    active = {
+      trend,
+      top,
+      bottom,
+      buyRatio,
+      sellRatio: 1 - buyRatio,
+      split: bottom + (top - bottom) * buyRatio,
+      startIndex: pivotIndex,
+      startTime: c[pivotIndex]?.time ?? null,
+      endIndex: null,
+      endTime: null,
+      broken: false
+    };
+  };
+
+  for (let i = 0; i < c.length; i++) {
     const pl = pivotLow(c, i, CONFIG.pivotLen);
     const ph = pivotHigh(c, i, CONFIG.pivotLen);
     const pivotIndex = i - CONFIG.pivotLen;
 
-    if (t.trend[i] === 1 && pl != null) {
-      const obTop = Math.min(c[pivotIndex].open, c[pivotIndex].close);
-      const obBot = obTop - Number(t.atr[i] || 0);
-      if (!overlap(obTop, obBot, active?.top, active?.bottom)) {
-        if (active) active.endIndex = pivotIndex;
-        const buyRatio = windowBuyRatio(c, i, CONFIG.pivotLen);
-        active = {
-          trend: 1, top: obTop, bottom: obBot, buyRatio,
-          sellRatio: 1 - buyRatio, split: obBot + (obTop - obBot) * buyRatio,
-          startIndex: pivotIndex, startTime: c[pivotIndex]?.time ?? null,
-          endIndex: null, broken: false
-        };
-      }
-    }
-
-    if (t.trend[i] === -1 && ph != null) {
-      const obBot = Math.max(c[pivotIndex].open, c[pivotIndex].close);
-      const obTop = obBot + Number(t.atr[i] || 0);
-      if (!overlap(obTop, obBot, active?.top, active?.bottom)) {
-        if (active) active.endIndex = pivotIndex;
-        const buyRatio = windowBuyRatio(c, i, CONFIG.pivotLen);
-        active = {
-          trend: -1, top: obTop, bottom: obBot, buyRatio,
-          sellRatio: 1 - buyRatio, split: obBot + (obTop - obBot) * buyRatio,
-          startIndex: pivotIndex, startTime: c[pivotIndex]?.time ?? null,
-          endIndex: null, broken: false
-        };
-      }
-    }
+    if (t.trend[i] === 1 && pl != null) createZone(1, pivotIndex, i);
+    if (t.trend[i] === -1 && ph != null) createZone(-1, pivotIndex, i);
 
     if (active && CONFIG.deleteOnBreak) {
-      const broken = active.trend === 1 ? c[i].high < active.bottom : c[i].low > active.top;
-      if (broken) {
-        active.broken = true;
-        active.endIndex = i;
-        active = null;
-      }
+      const isBroken = active.trend === 1
+        ? c[i].high < active.bottom
+        : c[i].low > active.top;
+      if (isBroken) closeActive(i, true);
     }
 
     const marketChange = i > 0 && t.trend[i] !== t.trend[i - 1];
     const prev = i > 0 ? c[i - 1] : null;
     const buyRetest = !!active && active.trend === 1 && CONFIG.showBullRetest && pl == null &&
-      Number.isFinite(active.top) && Number.isFinite(active.buyRatio) &&
       active.buyRatio >= CONFIG.bullVolPct / 100 && !marketChange && !!prev &&
       prev.low <= active.top && c[i].low > active.top;
     const sellRetest = !!active && active.trend === -1 && CONFIG.showBearRetest && ph == null &&
-      Number.isFinite(active.bottom) && Number.isFinite(active.sellRatio) &&
       active.sellRatio >= CONFIG.bearVolPct / 100 && !marketChange && !!prev &&
       prev.high >= active.bottom && c[i].high < active.bottom;
 
@@ -170,8 +178,12 @@ export function analyzeVolumeOB(c) {
         sellPercent: Math.round(active.sellRatio * 100)
       });
     }
+  }
 
-    if (active) zones.push({ ...active, endIndex: active.endIndex ?? i });
+  if (active) {
+    active.endIndex = c.length - 1;
+    active.endTime = c.at(-1)?.time ?? active.startTime;
+    zones.push({ ...active });
   }
 
   const latest = signals.at(-1) || null;
