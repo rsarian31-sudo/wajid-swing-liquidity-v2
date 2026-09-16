@@ -14,10 +14,8 @@ function parseEpoch(value) {
 }
 
 // XAUS is a free, keyless XAU/USD intraday feed sampled every ~2 minutes.
-// We aggregate those real observed prices into the 5M/15M bars used by the
-// strategy when Twelve Data is unavailable or out of credits. This is a data
-// provider fallback only; the Swing Liquidity / Volume OB mathematics remain
-// unchanged.
+// We aggregate those observed prices into the 5M/15M bars used by the
+// strategy when Twelve Data is unavailable or all configured keys fail.
 async function fetchXausCandles(interval, outputsize) {
   const hours = 48;
   const r = await fetch(`https://xaus.com/api/v1/intraday?symbol=xau&hours=${hours}`, {
@@ -48,15 +46,12 @@ async function fetchXausCandles(interval, outputsize) {
   return candles.slice(-Math.min(outputsize, candles.length));
 }
 
-// Yahoo's public chart endpoint provides a much deeper intraday history than
-// the currently warm XAUS intraday series. It is used only as the second
-// fallback when Twelve Data is unavailable. Yahoo supports XAUUSD=X and
-// 5m/15m bars over recent ranges.
+// Yahoo is an emergency fallback only. It is not treated as broker-equivalent
+// real-time data for signal generation when Twelve Data is available.
 async function fetchYahooCandles(interval, outputsize) {
   const yahooInterval = interval === '5min' ? '5m' : '15m';
-  const range = '5d';
   const url = new URL('https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X');
-  url.searchParams.set('range', range);
+  url.searchParams.set('range', '5d');
   url.searchParams.set('interval', yahooInterval);
   url.searchParams.set('includePrePost', 'false');
   const r = await fetch(url.toString(), {
@@ -69,60 +64,90 @@ async function fetchYahooCandles(interval, outputsize) {
 
   const q = result?.indicators?.quote?.[0] || {};
   const candles = result.timestamp.map((ts, i) => ({
-    time: Number(ts),
-    open: Number(q.open?.[i]),
-    high: Number(q.high?.[i]),
-    low: Number(q.low?.[i]),
-    close: Number(q.close?.[i]),
-    volume: Number(q.volume?.[i] || 0)
+    time: Number(ts), open: Number(q.open?.[i]), high: Number(q.high?.[i]), low: Number(q.low?.[i]),
+    close: Number(q.close?.[i]), volume: Number(q.volume?.[i] || 0)
   })).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
 
   const unique = [];
   const seen = new Set();
-  for (const c of candles) {
-    if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
-  }
+  for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
   if (!unique.length) throw Error('Yahoo returned no usable XAU/USD candles');
   return unique.slice(-Math.min(outputsize, unique.length));
 }
 
-async function fetchMarketCandles(interval, outputsize, apiKey) {
-  if (apiKey) {
+function getTwelveDataKeys(env) {
+  // Keys are Cloudflare secrets. Never put actual keys in source control.
+  return [
+    env.TWELVE_DATA_API_KEY,
+    env.TWELVE_DATA_API_KEY_2,
+    env.TWELVE_DATA_API_KEY_3,
+    env.TWELVE_DATA_API_KEY_4
+  ].map(x => String(x || '').trim()).filter(Boolean);
+}
+
+async function fetchTwelveDataCandles(interval, outputsize, apiKey, keyNumber) {
+  const p = new URLSearchParams({
+    symbol:'XAU/USD', interval, outputsize:String(outputsize), order:'ASC', timezone:'UTC', apikey:apiKey
+  });
+  const r = await fetch('https://api.twelvedata.com/time_series?' + p);
+  const d = await r.json();
+  if (!r.ok || d?.status === 'error' || d?.code || !Array.isArray(d?.values)) {
+    const code = d?.code ? ` (${d.code})` : '';
+    throw Error(`Twelve Data #${keyNumber} failed${code}: ${d?.message || 'request failed'}`);
+  }
+
+  const candles = d.values.map(x => ({
+    time:parseEpoch(x.timestamp || x.datetime), open:Number(x.open), high:Number(x.high),
+    low:Number(x.low), close:Number(x.close), volume:Number(x.volume || 0)
+  })).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+  candles.sort((a,b)=>a.time-b.time);
+  const unique=[]; const seen=new Set();
+  for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
+  if (!unique.length) throw Error(`Twelve Data #${keyNumber} returned no values`);
+  return unique;
+}
+
+async function fetchMarketCandles(interval, outputsize, env) {
+  const keys = getTwelveDataKeys(env);
+  const failures = [];
+
+  // Sequential failover: only move to the next configured/authorized key
+  // after the current key returns an error, quota response, or unusable data.
+  for (let i = 0; i < keys.length; i++) {
     try {
-      const p = new URLSearchParams({symbol:'XAU/USD',interval,outputsize:String(outputsize),order:'ASC',timezone:'UTC',apikey:apiKey});
-      const r = await fetch('https://api.twelvedata.com/time_series?' + p);
-      const d = await r.json();
-      if (!r.ok || d?.status === 'error' || d?.code || !Array.isArray(d?.values)) {
-        throw Error(d?.message || 'Twelve Data request failed');
-      }
-      const candles = d.values.map(x => ({time:parseEpoch(x.timestamp || x.datetime),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume || 0)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
-      candles.sort((a,b)=>a.time-b.time);
-      const unique=[]; const seen=new Set();
-      for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
-      if (!unique.length) throw Error('Twelve Data returned no values');
-      return { candles: unique, provider: 'Twelve Data' };
+      const candles = await fetchTwelveDataCandles(interval, outputsize, keys[i], i + 1);
+      return {
+        candles,
+        provider: `Twelve Data #${i + 1}`,
+        fallback: i > 0,
+        fallbackReason: i > 0 ? failures.join('; ') : null,
+        keyIndex: i + 1
+      };
     } catch (error) {
-      try {
-        const candles = await fetchYahooCandles(interval, outputsize);
-        return { candles, provider: 'Yahoo Finance', fallback: true, fallbackReason: error?.message || 'Twelve Data unavailable' };
-      } catch (yahooError) {
-        const fallback = await fetchXausCandles(interval, outputsize);
-        return {
-          candles: fallback,
-          provider: 'XAUS',
-          fallback: true,
-          fallbackReason: `${error?.message || 'Twelve Data unavailable'}; Yahoo: ${yahooError?.message || 'unavailable'}`
-        };
-      }
+      failures.push(error?.message || `Twelve Data #${i + 1} unavailable`);
     }
   }
 
+  // Emergency fallbacks remain available so the site can still render data,
+  // but the UI can distinguish them from Twelve Data.
   try {
     const candles = await fetchYahooCandles(interval, outputsize);
-    return { candles, provider: 'Yahoo Finance', fallback: true, fallbackReason: 'Twelve Data API key unavailable' };
+    return {
+      candles,
+      provider: 'Yahoo Finance',
+      fallback: true,
+      fallbackReason: failures.length ? failures.join('; ') : 'No Twelve Data key configured',
+      keyIndex: null
+    };
   } catch (yahooError) {
     const fallback = await fetchXausCandles(interval, outputsize);
-    return { candles: fallback, provider: 'XAUS', fallback: true, fallbackReason: `Yahoo: ${yahooError?.message || 'unavailable'}` };
+    return {
+      candles: fallback,
+      provider: 'XAUS',
+      fallback: true,
+      fallbackReason: `${failures.join('; ')}; Yahoo: ${yahooError?.message || 'unavailable'}`,
+      keyIndex: null
+    };
   }
 }
 
@@ -131,25 +156,13 @@ function activeHistoryTrade(signal, plan, candles) {
   const entryCandle = candles.find((c) => c.time === signal.time) || candles.at(-1);
   const sweep = signal.sweep;
   return {
-    id: `${signal.time}-${signal.direction}-ACTIVE`,
-    direction: signal.direction,
-    signalTime: signal.time,
-    swingTime: sweep?.level?.time ?? null,
-    swingType: sweep?.level?.type ?? null,
+    id: `${signal.time}-${signal.direction}-ACTIVE`, direction: signal.direction, signalTime: signal.time,
+    swingTime: sweep?.level?.time ?? null, swingType: sweep?.level?.type ?? null,
     swingPrice: Number.isFinite(Number(sweep?.level?.price)) ? Number(Number(sweep.level.price).toFixed(2)) : null,
-    entry: Number(Number(plan.entry).toFixed(2)),
-    stopLoss: Number(Number(plan.stopLoss).toFixed(2)),
-    tp1: Number(Number(plan.tp1).toFixed(2)),
-    tp2: Number(Number(plan.tp2).toFixed(2)),
-    tp3: Number(Number(plan.tp3).toFixed(2)),
-    risk: Number(Number(plan.risk).toFixed(2)),
-    realizedR: 0,
-    result: 'OPEN',
-    status: 'OPEN',
-    exit: null,
-    exitTime: null,
-    reason: 'Active confirmed signal; TP2 or SL not reached yet',
-    entryCandleTime: entryCandle?.time ?? signal.time
+    entry: Number(Number(plan.entry).toFixed(2)), stopLoss: Number(Number(plan.stopLoss).toFixed(2)),
+    tp1: Number(Number(plan.tp1).toFixed(2)), tp2: Number(Number(plan.tp2).toFixed(2)), tp3: Number(Number(plan.tp3).toFixed(2)),
+    risk: Number(Number(plan.risk).toFixed(2)), realizedR: 0, result: 'OPEN', status: 'OPEN', exit: null, exitTime: null,
+    reason: 'Active confirmed signal; TP2 or SL not reached yet', entryCandleTime: entryCandle?.time ?? signal.time
   };
 }
 
@@ -164,29 +177,16 @@ function waitSignal(a) {
 function signalFromActive(active) {
   if (!active) return null;
   return {
-    value: active.direction,
-    direction: active.direction,
-    probability: active.probability ?? 0,
-    score: active.score ?? 0,
-    time: active.signalTime,
-    price: active.entry,
-    sweep: active.sweep || null,
-    confirmation: { confirmed: true, direction: active.direction, time: active.signalTime, price: active.entry },
-    rejection: null
+    value: active.direction, direction: active.direction, probability: active.probability ?? 0, score: active.score ?? 0,
+    time: active.signalTime, price: active.entry, sweep: active.sweep || null,
+    confirmation: { confirmed: true, direction: active.direction, time: active.signalTime, price: active.entry }, rejection: null
   };
 }
 
 function planFromActive(active) {
   if (!active) return null;
-  return {
-    entry: active.entry,
-    stopLoss: active.stopLoss,
-    tp1: active.tp1,
-    tp2: active.tp2,
-    tp3: active.tp3,
-    risk: active.risk,
-    rr: { tp1: 1, tp2: 2, tp3: 3 }
-  };
+  return { entry: active.entry, stopLoss: active.stopLoss, tp1: active.tp1, tp2: active.tp2, tp3: active.tp3,
+    risk: active.risk, rr: { tp1: 1, tp2: 2, tp3: 3 } };
 }
 
 async function getPersistentBucket(env, interval) {
@@ -213,7 +213,7 @@ export async function onRequest(context) {
     const hit = await cache.match(cacheKey);
     if (hit) return new Response(hit.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30','X-Wajid-Cache':'HIT'}});
 
-    const market = await fetchMarketCandles(interval, outputsize, env.TWELVE_DATA_API_KEY);
+    const market = await fetchMarketCandles(interval, outputsize, env);
     const unique = market.candles;
     const now = Math.floor(Date.now() / 1000);
     const intervalSeconds = INTERVAL_SECONDS[interval];
@@ -224,26 +224,19 @@ export async function onRequest(context) {
     const a = analyze(analysisCandles);
     const volumeOB = analyzeVolumeOB(analysisCandles);
     const fallbackTrades = buildHistory(analysisCandles,a.swings,symbol);
-
     const persistent = await getPersistentBucket(env, interval);
     const active = persistent?.active || null;
     const hasPersistentState = !!persistent && (persistent.active !== undefined || Array.isArray(persistent.trades));
     const persistedTrades = Array.isArray(persistent?.trades) ? persistent.trades : [];
-    const trades = hasPersistentState && persistedTrades.length
-      ? [...persistedTrades, ...(active ? [toHistoryOpen(active)] : [])]
-      : [...fallbackTrades, ...(active ? [toHistoryOpen(active)] : [])];
-
+    const trades = hasPersistentState && persistedTrades.length ? [...persistedTrades, ...(active ? [toHistoryOpen(active)] : [])] : [...fallbackTrades, ...(active ? [toHistoryOpen(active)] : [])];
     const visibleSignal = active ? signalFromActive(active) : waitSignal(a);
     const visiblePlan = active ? planFromActive(active) : null;
-    const visibleDiagnostics = active
-      ? { ...a.diagnostics, confirmation: active.direction, latestSweep: active.sweep?.type || a.diagnostics.latestSweep, latestPrice: unique.at(-1)?.close || a.diagnostics.latestPrice }
-      : a.diagnostics;
-
+    const visibleDiagnostics = active ? { ...a.diagnostics, confirmation: active.direction, latestSweep: active.sweep?.type || a.diagnostics.latestSweep, latestPrice: unique.at(-1)?.close || a.diagnostics.latestPrice } : a.diagnostics;
     const wins=trades.filter(x=>x.result==='WIN').length;
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},dataProvider:{name:market.provider,fallback:!!market.fallback,fallbackReason:market.fallbackReason||null},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},dataProvider:{name:market.provider,fallback:!!market.fallback,fallbackReason:market.fallbackReason||null,keyIndex:market.keyIndex||null},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
@@ -252,24 +245,11 @@ export async function onRequest(context) {
 
 function toHistoryOpen(active) {
   return {
-    id: active.id,
-    interval: active.interval,
-    direction: active.direction,
-    signalTime: active.signalTime,
-    swingTime: active.sweep?.level?.time ?? null,
-    swingType: active.sweep?.level?.type ?? null,
+    id: active.id, interval: active.interval, direction: active.direction, signalTime: active.signalTime,
+    swingTime: active.sweep?.level?.time ?? null, swingType: active.sweep?.level?.type ?? null,
     swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep.level.price).toFixed(2)) : null,
-    entry: active.entry,
-    stopLoss: active.stopLoss,
-    tp1: active.tp1,
-    tp2: active.tp2,
-    tp3: active.tp3,
-    risk: active.risk,
-    realizedR: 0,
-    result: 'OPEN',
-    status: 'OPEN',
-    exit: null,
-    exitTime: null,
+    entry: active.entry, stopLoss: active.stopLoss, tp1: active.tp1, tp2: active.tp2, tp3: active.tp3, risk: active.risk,
+    realizedR: 0, result: 'OPEN', status: 'OPEN', exit: null, exitTime: null,
     reason: active.tp1Hit ? 'TP1 reached; TP2 and SL not reached yet' : 'Active confirmed signal; TP2 and SL not reached yet'
   };
 }
