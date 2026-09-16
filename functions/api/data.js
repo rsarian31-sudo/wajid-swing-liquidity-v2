@@ -48,25 +48,81 @@ async function fetchXausCandles(interval, outputsize) {
   return candles.slice(-Math.min(outputsize, candles.length));
 }
 
+// Yahoo's public chart endpoint provides a much deeper intraday history than
+// the currently warm XAUS intraday series. It is used only as the second
+// fallback when Twelve Data is unavailable. Yahoo supports XAUUSD=X and
+// 5m/15m bars over recent ranges.
+async function fetchYahooCandles(interval, outputsize) {
+  const yahooInterval = interval === '5min' ? '5m' : '15m';
+  const range = '5d';
+  const url = new URL('https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X');
+  url.searchParams.set('range', range);
+  url.searchParams.set('interval', yahooInterval);
+  url.searchParams.set('includePrePost', 'false');
+  const r = await fetch(url.toString(), {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' },
+    cf: { cacheTtl: 60, cacheEverything: true }
+  });
+  const d = await r.json();
+  const result = d?.chart?.result?.[0];
+  if (!r.ok || !result?.timestamp) throw Error(d?.chart?.error?.description || 'Yahoo XAU/USD feed unavailable');
+
+  const q = result?.indicators?.quote?.[0] || {};
+  const candles = result.timestamp.map((ts, i) => ({
+    time: Number(ts),
+    open: Number(q.open?.[i]),
+    high: Number(q.high?.[i]),
+    low: Number(q.low?.[i]),
+    close: Number(q.close?.[i]),
+    volume: Number(q.volume?.[i] || 0)
+  })).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+
+  const unique = [];
+  const seen = new Set();
+  for (const c of candles) {
+    if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
+  }
+  if (!unique.length) throw Error('Yahoo returned no usable XAU/USD candles');
+  return unique.slice(-Math.min(outputsize, unique.length));
+}
+
 async function fetchMarketCandles(interval, outputsize, apiKey) {
-  if (!apiKey) return { candles: await fetchXausCandles(interval, outputsize), provider: 'XAUS' };
+  if (apiKey) {
+    try {
+      const p = new URLSearchParams({symbol:'XAU/USD',interval,outputsize:String(outputsize),order:'ASC',timezone:'UTC',apikey:apiKey});
+      const r = await fetch('https://api.twelvedata.com/time_series?' + p);
+      const d = await r.json();
+      if (!r.ok || d?.status === 'error' || d?.code || !Array.isArray(d?.values)) {
+        throw Error(d?.message || 'Twelve Data request failed');
+      }
+      const candles = d.values.map(x => ({time:parseEpoch(x.timestamp || x.datetime),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume || 0)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+      candles.sort((a,b)=>a.time-b.time);
+      const unique=[]; const seen=new Set();
+      for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
+      if (!unique.length) throw Error('Twelve Data returned no values');
+      return { candles: unique, provider: 'Twelve Data' };
+    } catch (error) {
+      try {
+        const candles = await fetchYahooCandles(interval, outputsize);
+        return { candles, provider: 'Yahoo Finance', fallback: true, fallbackReason: error?.message || 'Twelve Data unavailable' };
+      } catch (yahooError) {
+        const fallback = await fetchXausCandles(interval, outputsize);
+        return {
+          candles: fallback,
+          provider: 'XAUS',
+          fallback: true,
+          fallbackReason: `${error?.message || 'Twelve Data unavailable'}; Yahoo: ${yahooError?.message || 'unavailable'}`
+        };
+      }
+    }
+  }
 
   try {
-    const p = new URLSearchParams({symbol:'XAU/USD',interval,outputsize:String(outputsize),order:'ASC',timezone:'UTC',apikey:apiKey});
-    const r = await fetch('https://api.twelvedata.com/time_series?' + p);
-    const d = await r.json();
-    if (!r.ok || d?.status === 'error' || d?.code || !Array.isArray(d?.values)) {
-      throw Error(d?.message || 'Twelve Data request failed');
-    }
-    const candles = d.values.map(x => ({time:parseEpoch(x.timestamp || x.datetime),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume || 0)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
-    candles.sort((a,b)=>a.time-b.time);
-    const unique=[]; const seen=new Set();
-    for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
-    if (!unique.length) throw Error('Twelve Data returned no values');
-    return { candles: unique, provider: 'Twelve Data' };
-  } catch (error) {
+    const candles = await fetchYahooCandles(interval, outputsize);
+    return { candles, provider: 'Yahoo Finance', fallback: true, fallbackReason: 'Twelve Data API key unavailable' };
+  } catch (yahooError) {
     const fallback = await fetchXausCandles(interval, outputsize);
-    return { candles: fallback, provider: 'XAUS', fallbackReason: error?.message || 'Twelve Data unavailable' };
+    return { candles: fallback, provider: 'XAUS', fallback: true, fallbackReason: `Yahoo: ${yahooError?.message || 'unavailable'}` };
   }
 }
 
@@ -187,7 +243,7 @@ export async function onRequest(context) {
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},dataProvider:{name:market.provider,fallback:market.provider==='XAUS',fallbackReason:market.fallbackReason||null},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},dataProvider:{name:market.provider,fallback:!!market.fallback,fallbackReason:market.fallbackReason||null},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
