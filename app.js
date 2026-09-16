@@ -34,6 +34,11 @@ const entrySeries = chart.addLineSeries({ color: '#35dfa0', lineWidth: 1, priceL
 const stopSeries = chart.addLineSeries({ color: '#ff6578', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'SL' });
 const tp2Series = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'TP2' });
 
+// Volume-Trend Order Block Engine overlay. Independent from Swing Liquidity.
+const obTopSeries = chart.addLineSeries({ color: '#00ffcc', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, title: 'OB TOP' });
+const obBottomSeries = chart.addLineSeries({ color: '#ff007f', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, title: 'OB BOTTOM' });
+const obSplitSeries = chart.addLineSeries({ color: '#d7d7d7', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, title: 'OB SPLIT' });
+
 const fmt = (x) => Number.isFinite(Number(x)) ? Number(x).toFixed(2) : '—';
 const time = (x) => x ? new Date(Number(x) * 1000).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
@@ -43,6 +48,12 @@ const tfLong = () => interval === '5min' ? '5 Minutes' : '15 Minutes';
 function setFlat(series, data, value) {
   if (Number.isFinite(Number(value)) && data.length > 1) series.setData([{ time: data[0].time, value: Number(value) }, { time: data[data.length - 1].time, value: Number(value) }]);
   else series.setData([]);
+}
+function setZoneLine(series, candles, zone, field) {
+  if (!zone || !candles.length || !Number.isFinite(Number(zone[field]))) { series.setData([]); return; }
+  const start = Number(zone.startTime || candles[0].time);
+  const end = Number(candles.at(-1).time);
+  series.setData([{ time: start, value: Number(zone[field]) }, { time: end, value: Number(zone[field]) }]);
 }
 function setStatus(text, live = false) { $('status').textContent = text; $('status').className = live ? 'status live' : 'status'; }
 function syncTimeframeUI() {
@@ -121,31 +132,24 @@ function renderDiagnostics(q = {}) {
 }
 
 function markEntryCandle(candles, signal, active) {
-  // The canonical engine's signal.time is the confirmed entry candle time.
-  // Prefer the active trade's signalTime when available so the chart marker
-  // always points to the exact candle from which the live trade was created.
   const entryTime = Number(active?.signalTime || signal?.time || 0);
-  if (!Number.isFinite(entryTime) || !entryTime) {
-    entryCandleSeries.setData([]);
-    return [];
-  }
-
+  if (!Number.isFinite(entryTime) || !entryTime) { entryCandleSeries.setData([]); return []; }
   const candle = candles.find(c => Number(c.time) === entryTime);
-  if (!candle) {
-    entryCandleSeries.setData([]);
-    return [];
-  }
-
+  if (!candle) { entryCandleSeries.setData([]); return []; }
   entryCandleSeries.setData([candle]);
   const direction = active?.direction || signal?.direction;
   const isBuy = direction === 'BUY';
-  return [{
-    time: entryTime,
-    position: isBuy ? 'belowBar' : 'aboveBar',
-    shape: isBuy ? 'arrowUp' : 'arrowDown',
-    color: isBuy ? '#8affc8' : '#ff9aaa',
-    text: 'ENTRY CANDLE'
-  }];
+  return [{ time: entryTime, position: isBuy ? 'belowBar' : 'aboveBar', shape: isBuy ? 'arrowUp' : 'arrowDown', color: isBuy ? '#8affc8' : '#ff9aaa', text: 'ENTRY CANDLE' }];
+}
+
+function volumeOBMarkers(volumeOB) {
+  return (volumeOB?.signals || []).map((x) => ({
+    time: Number(x.time),
+    position: x.direction === 'BUY' ? 'belowBar' : 'aboveBar',
+    shape: x.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
+    color: x.direction === 'BUY' ? '#00ffcc' : '#ff007f',
+    text: x.direction === 'BUY' ? `OB BUY ${x.buyPercent}%` : `OB SELL ${x.sellPercent}%`
+  })).filter(x => Number.isFinite(x.time));
 }
 
 async function load() {
@@ -163,7 +167,13 @@ async function load() {
     const active=data.activeTrade;
     const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
     const entryMarker=markEntryCandle(candles, signal, active);
-    candleSeries.setMarkers([...sweepMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
+    const obMarkers=volumeOBMarkers(data.volumeOB);
+    candleSeries.setMarkers([...sweepMarkers, ...entryMarker, ...obMarkers].sort((a,b)=>a.time-b.time));
+
+    const obZone=data.volumeOB?.activeZone||null;
+    setZoneLine(obTopSeries,candles,obZone,'top');
+    setZoneLine(obBottomSeries,candles,obZone,'bottom');
+    setZoneLine(obSplitSeries,candles,obZone,'split');
 
     $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
     $('signalMeta').textContent=signal.time?`Confirmed ${time(signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
