@@ -18,6 +18,16 @@ const candleSeries = chart.addCandlestickSeries({
   upColor: '#35dfa0', downColor: '#ff6578', borderUpColor: '#35dfa0', borderDownColor: '#ff6578',
   wickUpColor: '#35dfa0', wickDownColor: '#ff6578'
 });
+
+// Exact entry candle overlay. This does not change the strategy; it only makes
+// the candle used for the current confirmed entry visually obvious on the chart.
+const entryCandleSeries = chart.addCandlestickSeries({
+  upColor: '#8affc8', downColor: '#ff9aaa',
+  borderUpColor: '#8affc8', borderDownColor: '#ff9aaa',
+  wickUpColor: '#8affc8', wickDownColor: '#ff9aaa',
+  priceLineVisible: false, lastValueVisible: false
+});
+
 const swingHighSeries = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
 const swingLowSeries = chart.addLineSeries({ color: '#4f9cff', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
 const entrySeries = chart.addLineSeries({ color: '#35dfa0', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'ENTRY' });
@@ -109,6 +119,35 @@ function renderDiagnostics(q = {}) {
     ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'STOP_TOO_WIDE'}` : risk.passed ? 'PASSED' : 'WAIT']
   ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 }
+
+function markEntryCandle(candles, signal, active) {
+  // The canonical engine's signal.time is the confirmed entry candle time.
+  // Prefer the active trade's signalTime when available so the chart marker
+  // always points to the exact candle from which the live trade was created.
+  const entryTime = Number(active?.signalTime || signal?.time || 0);
+  if (!Number.isFinite(entryTime) || !entryTime) {
+    entryCandleSeries.setData([]);
+    return [];
+  }
+
+  const candle = candles.find(c => Number(c.time) === entryTime);
+  if (!candle) {
+    entryCandleSeries.setData([]);
+    return [];
+  }
+
+  entryCandleSeries.setData([candle]);
+  const direction = active?.direction || signal?.direction;
+  const isBuy = direction === 'BUY';
+  return [{
+    time: entryTime,
+    position: isBuy ? 'belowBar' : 'aboveBar',
+    shape: isBuy ? 'arrowUp' : 'arrowDown',
+    color: isBuy ? '#8affc8' : '#ff9aaa',
+    text: 'ENTRY CANDLE'
+  }];
+}
+
 async function load() {
   if (loading) return; loading = true; setStatus('LOADING');
   try {
@@ -119,13 +158,17 @@ async function load() {
     candleSeries.setData(candles);
     swingHighSeries.setData((data.swings?.highs || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
     swingLowSeries.setData((data.swings?.lows || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
-    const markers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time)).sort((a,b)=>a.time-b.time);
-    candleSeries.setMarkers(markers);
+
     const signal=data.signal||{};
+    const active=data.activeTrade;
+    const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
+    const entryMarker=markEntryCandle(candles, signal, active);
+    candleSeries.setMarkers([...sweepMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
+
     $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
     $('signalMeta').textContent=signal.time?`Confirmed ${time(signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
     $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
-    const active=data.activeTrade, plan=data.tradePlan, activeDirection=active?.direction||null;
+    const plan=data.tradePlan, activeDirection=active?.direction||null;
     $('planState').textContent=active&&plan&&activeDirection?`${activeDirection} ACTIVE`:'No active trade';
     $('entry').textContent=active&&plan?fmt(plan.entry):'—'; $('sl').textContent=active&&plan?fmt(plan.stopLoss):'—'; $('tp1').textContent=active&&plan?fmt(plan.tp1):'—'; $('tp2').textContent=active&&plan?fmt(plan.tp2):'—'; $('tp3').textContent=active&&plan?fmt(plan.tp3):'—'; $('risk').textContent=active&&plan?fmt(plan.risk):'—';
     setFlat(entrySeries,candles,active&&plan?plan.entry:null); setFlat(stopSeries,candles,active&&plan?plan.stopLoss:null); setFlat(tp2Series,candles,active&&plan?plan.tp2:null);
