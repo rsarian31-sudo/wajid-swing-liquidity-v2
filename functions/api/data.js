@@ -4,6 +4,72 @@ import { analyzeVolumeOB } from '../../src/volume-ob-strategy.js';
 const ALLOWED = new Set(['5min','15min']);
 const INTERVAL_SECONDS = { '5min': 300, '15min': 900 };
 
+function parseEpoch(value) {
+  if (Number.isFinite(Number(value))) {
+    const n = Number(value);
+    return n > 100000000000 ? Math.floor(n / 1000) : Math.floor(n);
+  }
+  const n = Date.parse(String(value || ''));
+  return Number.isFinite(n) ? Math.floor(n / 1000) : NaN;
+}
+
+// XAUS is a free, keyless XAU/USD intraday feed sampled every ~2 minutes.
+// We aggregate those real observed prices into the 5M/15M bars used by the
+// strategy when Twelve Data is unavailable or out of credits. This is a data
+// provider fallback only; the Swing Liquidity / Volume OB mathematics remain
+// unchanged.
+async function fetchXausCandles(interval, outputsize) {
+  const hours = 48;
+  const r = await fetch(`https://xaus.com/api/v1/intraday?symbol=xau&hours=${hours}`, {
+    headers: { 'Accept': 'application/json' },
+    cf: { cacheTtl: 30, cacheEverything: true }
+  });
+  const d = await r.json();
+  if (!r.ok || !Array.isArray(d?.points)) throw Error(d?.error || 'XAUS intraday feed unavailable');
+
+  const bucketSize = INTERVAL_SECONDS[interval];
+  const buckets = new Map();
+  for (const point of d.points) {
+    const ts = parseEpoch(point?.t);
+    const price = Number(point?.p);
+    if (!Number.isFinite(ts) || !Number.isFinite(price) || price <= 0) continue;
+    const bucket = Math.floor(ts / bucketSize) * bucketSize;
+    const prev = buckets.get(bucket);
+    if (!prev) buckets.set(bucket, { time: bucket, open: price, high: price, low: price, close: price, volume: 0 });
+    else {
+      prev.high = Math.max(prev.high, price);
+      prev.low = Math.min(prev.low, price);
+      prev.close = price;
+    }
+  }
+
+  const candles = [...buckets.values()].sort((a,b) => a.time - b.time);
+  if (!candles.length) throw Error('XAUS returned no usable intraday prices');
+  return candles.slice(-Math.min(outputsize, candles.length));
+}
+
+async function fetchMarketCandles(interval, outputsize, apiKey) {
+  if (!apiKey) return { candles: await fetchXausCandles(interval, outputsize), provider: 'XAUS' };
+
+  try {
+    const p = new URLSearchParams({symbol:'XAU/USD',interval,outputsize:String(outputsize),order:'ASC',timezone:'UTC',apikey:apiKey});
+    const r = await fetch('https://api.twelvedata.com/time_series?' + p);
+    const d = await r.json();
+    if (!r.ok || d?.status === 'error' || d?.code || !Array.isArray(d?.values)) {
+      throw Error(d?.message || 'Twelve Data request failed');
+    }
+    const candles = d.values.map(x => ({time:parseEpoch(x.timestamp || x.datetime),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume || 0)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+    candles.sort((a,b)=>a.time-b.time);
+    const unique=[]; const seen=new Set();
+    for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
+    if (!unique.length) throw Error('Twelve Data returned no values');
+    return { candles: unique, provider: 'Twelve Data' };
+  } catch (error) {
+    const fallback = await fetchXausCandles(interval, outputsize);
+    return { candles: fallback, provider: 'XAUS', fallbackReason: error?.message || 'Twelve Data unavailable' };
+  }
+}
+
 function activeHistoryTrade(signal, plan, candles) {
   if (!signal || signal.direction === 'WAIT' || !plan) return null;
   const entryCandle = candles.find((c) => c.time === signal.time) || candles.at(-1);
@@ -85,25 +151,14 @@ export async function onRequest(context) {
     const interval = ALLOWED.has(u.searchParams.get('interval')) ? u.searchParams.get('interval') : '15min';
     const n = Number(u.searchParams.get('outputsize') || CONFIG.outputSize);
     const outputsize = Number.isFinite(n) ? Math.min(500, Math.max(100, Math.floor(n))) : CONFIG.outputSize;
-    if (!env.TWELVE_DATA_API_KEY) return json({success:false,error:'TWELVE_DATA_API_KEY is not configured'},500);
 
     const cache = caches.default;
     const cacheKey = new Request('https://wajid-cache.local/data/' + interval + '/' + outputsize);
     const hit = await cache.match(cacheKey);
     if (hit) return new Response(hit.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30','X-Wajid-Cache':'HIT'}});
 
-    const p = new URLSearchParams({symbol,interval,outputsize:String(outputsize),order:'ASC',timezone:'UTC',apikey:env.TWELVE_DATA_API_KEY});
-    const r = await fetch('https://api.twelvedata.com/time_series?' + p);
-    const d = await r.json();
-    if (!r.ok || d?.status === 'error' || d?.code) throw Error(d?.message || 'Twelve Data request failed');
-    if (!Array.isArray(d?.values)) throw Error('Twelve Data returned no values');
-
-    const candles = d.values.map(x => ({time:Math.floor(x.timestamp ? Number(x.timestamp) : Date.parse(String(x.datetime || ''))/1000),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume || 0)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
-    candles.sort((a,b)=>a.time-b.time);
-    const unique=[]; const seen=new Set();
-    for (const c of candles) if (!seen.has(c.time)) { seen.add(c.time); unique.push(c); }
-    if (!unique.length) throw Error('No market candles returned');
-
+    const market = await fetchMarketCandles(interval, outputsize, env.TWELVE_DATA_API_KEY);
+    const unique = market.candles;
     const now = Math.floor(Date.now() / 1000);
     const intervalSeconds = INTERVAL_SECONDS[interval];
     const closedCandles = unique.filter(c => c.time + intervalSeconds <= now);
@@ -132,7 +187,7 @@ export async function onRequest(context) {
     const losses=trades.filter(x=>x.result==='LOSS').length;
     const open=trades.filter(x=>x.result==='OPEN').length;
     const totalR=trades.reduce((s,x)=>s+Number(x.realizedR||0),0);
-    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
+    const data={success:true,strategy:{id:'swing-liquidity',name:'Swing Liquidity',symbol,interval,parameters:CONFIG},dataProvider:{name:market.provider,fallback:market.provider==='XAUS',fallbackReason:market.fallbackReason||null},market:{symbol,interval,price:unique.at(-1).close,lastCandleTime:unique.at(-1).time,candleCount:unique.length,analysisCandleCount:analysisCandles.length},candles:unique,swings:a.swings,liquidity:{levels:a.liquidityLevels,sweeps:a.sweeps},signal:visibleSignal,tradePlan:visiblePlan,activeTrade:active ? toHistoryOpen(active) : null,diagnostics:visibleDiagnostics,volumeOB,history:{summary:{totalTrades:trades.length,wins,losses,open,winRate:(wins+losses)>0?Number((wins/(wins+losses)*100).toFixed(2)):0,totalR:Number(totalR.toFixed(2))},trades}};
     const response=new Response(JSON.stringify(data),{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=30'}});
     waitUntil(cache.put(cacheKey,response.clone()));
     return new Response(response.body,{headers:{'Content-Type':'application/json','Cache-Control':'public, max-age=0, s-maxage=30, stale-while-revalidate=15','X-Wajid-Cache':'MISS'}});
@@ -147,7 +202,7 @@ function toHistoryOpen(active) {
     signalTime: active.signalTime,
     swingTime: active.sweep?.level?.time ?? null,
     swingType: active.sweep?.level?.type ?? null,
-    swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep?.level?.price).toFixed(2)) : null,
+    swingPrice: Number.isFinite(Number(active.sweep?.level?.price)) ? Number(Number(active.sweep.level.price).toFixed(2)) : null,
     entry: active.entry,
     stopLoss: active.stopLoss,
     tp1: active.tp1,
