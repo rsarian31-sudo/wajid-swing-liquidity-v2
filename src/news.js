@@ -7,7 +7,7 @@ const BEARISH=['gold falls','gold drops','gold declines','gold slides','bearish 
 const HIGH_IMPACT=['fomc','federal reserve','fed ','powell','cpi','pce','ppi','nonfarm','nfp','payroll','unemployment','interest rate','rate decision'];
 function clean(s){return String(s||'').replace(/<!\[CDATA\[|\]\]>/g,'').replace(/<[^>]+>/g,' ').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'").replace(/&apos;/g,"'").replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/\s+/g,' ').trim()}
 function tag(xml,name){const m=xml.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)</${name}>`,'i'));return m?clean(m[1]):''}
-function items(xml){return [...xml.matchAll(/<item[\\s\\S]*?<\\/item>/gi)].map(m=>m[0]).map(x=>({title:tag(x,'title'),pubDate:tag(x,'pubDate'),link:tag(x,'link')})).filter(x=>x.title)}
+function items(xml){return [...xml.matchAll(/<item[\s\S]*?<\/item>/gi)].map(m=>m[0]).map(x=>({title:tag(x,'title'),pubDate:tag(x,'pubDate'),link:tag(x,'link')})).filter(x=>x.title)}
 function termCount(text,list){let n=0;for(const t of list)if(text.includes(t))n++;return n}
 export async function fetchNewsContext(){
   const now=Date.now();
