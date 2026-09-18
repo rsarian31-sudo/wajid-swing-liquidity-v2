@@ -148,23 +148,27 @@ function advanceActiveTrade(active,candles){
   for(let i=start;i<candles.length;i++){
     const candle=candles[i];
     const sl=active.direction==='BUY'?candle.low<=active.stopLoss:candle.high>=active.stopLoss;
-    const levels=[
-      ['TP1',1,'tp1','tp1Hit'],
-      ['TP2',2,'tp2','tp2Hit'],
-      ['TP3',3,'tp3','tp3Hit'],
-      ['TP4',4,'tp4','tp4Hit']
-    ];
+    if(sl){
+      next.realizedR=Number((Number(next.realizedR||0)-1).toFixed(2));
+      return{active:null,closed:closeTrade(next,'LOSS',next.realizedR,next.stopLoss,candle.time,'SL hit; realized R includes TP milestones'),notifications:[...notifications,{type:'LOSS',interval:active.interval,trade:next,candleTime:candle.time}]};
+    }
+    const levels=[['TP1',1,'tp1','tp1Hit'],['TP2',2,'tp2','tp2Hit'],['TP3',3,'tp3','tp3Hit'],['TP4',4,'tp4','tp4Hit']];
     for(const [label,r,key,flag] of levels){
       const hit=active.direction==='BUY'?candle.high>=active[key]:candle.low<=active[key];
       if(hit&&!next[flag]){
-        next[flag]=true; next.hitTPs.push(label); next.realizedR=Number((next.realizedR+r).toFixed(2));
+        next[flag]=true;
+        next.hitTPs.push(label);
+        next.realizedR=Number((Number(next.realizedR||0)+r).toFixed(2));
         notifications.push({type:label,interval:active.interval,trade:next,candleTime:candle.time});
-        if(label==='TP4') return{active:null,closed:closeTrade(next,'WIN',next.realizedR,next.tp4,candle.time,'TP4 hit'),notifications};
+        if(label==='TP4')return{active:null,closed:closeTrade(next,'WIN',next.realizedR,next.tp4,candle.time,'TP4 hit'),notifications};
       }
     }
-    if(sl){
-      next.realizedR=Number((next.realizedR-1).toFixed(2));
-      return{active:null,closed:closeTrade(next,'LOSS',next.realizedR,next.stopLoss,candle.time,'SL hit; realized R includes TP milestones'),notifications:[...notificationsfunction closeTrade(trade,result,realizedR,exit,exitTime,reason){return{id:trade.id,interval:trade.interval,direction:trade.direction,signalTime:trade.signalTime,confirmationTime:trade.confirmationTime??null,swingTime:trade.sweep?.level?.time??null,swingType:trade.sweep?.level?.type??null,swingPrice:Number.isFinite(Number(trade.sweep?.level?.price))?Number(Number(trade.sweep.level.price).toFixed(2)):null,entry:trade.entry,stopLoss:trade.stopLoss,tp1:trade.tp1,tp2:trade.tp2,tp3:trade.tp3,tp4:trade.tp4,risk:trade.risk,tp1Hit:!!trade.tp1Hit,tp2Hit:!!trade.tp2Hit,tp3Hit:!!trade.tp3Hit,tp4Hit:!!trade.tp4Hit,hitTPs:Array.isArray(trade.hitTPs)?trade.hitTPs:[],realizedR, result,status:'CLOSED',exit:Number(exit.toFixed(2)),exitTime,reason,news:trade.news||null,entryRule:'NEXT_CANDLE_OPEN'}}
+  }
+  return{active:next,closed:null,notifications};
+}
+function closeTrade(trade,result,realizedR,exit,exitTime,reason){
+  return{id:trade.id,interval:trade.interval,direction:trade.direction,signalTime:trade.signalTime,confirmationTime:trade.confirmationTime??null,swingTime:trade.sweep?.level?.time??null,swingType:trade.sweep?.level?.type??null,swingPrice:Number.isFinite(Number(trade.sweep?.level?.price))?Number(Number(trade.sweep.level.price).toFixed(2)):null,entry:trade.entry,stopLoss:trade.stopLoss,tp1:trade.tp1,tp2:trade.tp2,tp3:trade.tp3,tp4:trade.tp4,risk:trade.risk,tp1Hit:!!trade.tp1Hit,tp2Hit:!!trade.tp2Hit,tp3Hit:!!trade.tp3Hit,tp4Hit:!!trade.tp4Hit,hitTPs:Array.isArray(trade.hitTPs)?trade.hitTPs:[],realizedR,result,status:'CLOSED',exit:Number(exit.toFixed(2)),exitTime,reason,news:trade.news||null,entryRule:'NEXT_CANDLE_OPEN'};
+}
 async function getState(stub){const response=await stub.fetch('https://state/');return response.json()}
 async function putState(stub,state){await stub.fetch('https://state/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)})}
 async function sendTelegram(env,event,subscribers){if(!env.TELEGRAM_BOT_TOKEN)return false;const activeSubscribers=(subscribers||[]).filter(s=>s.active===true&&String(s.chatId));if(!activeSubscribers.length)return false;const trade=event.trade,tf=event.interval==='5min'?'5M':'15M';let text;if(event.type==='SIGNAL'){const nb=trade.news?.bias||'NEUTRAL',ni=trade.news?.highImpactRecent?'⚠️ HIGH-IMPACT NEWS':'📰 News: '+nb;text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1}`,`2️⃣ TP2: ${trade.tp2} (WIN)`,`3️⃣ TP3: ${trade.tp3}`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\n')}else if(event.type==='TP1')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP1 REACHED · +1R milestone\nEntry: ${trade.entry}\nTP1: ${trade.tp1}`;else if(event.type==='WIN')text=`🏆 WAJID ${tf} · XAU/USD\n\n✅ WIN · TP2 reached\nEntry: ${trade.entry}\nTP2: ${trade.tp2}\nResult: +2R`;else if(event.type==='LOSS')text=`🔴 WAJID ${tf} · XAU/USD\n\n❌ LOSS · SL reached\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: -1R`;else return false;const messageIds={};for(const subscriber of activeSubscribers){const payload={chat_id:subscriber.chatId,text,reply_markup:telegramKeyboard()},original=trade.telegramMessageIds?.[String(subscriber.chatId)];if(event.type!=='SIGNAL'&&Number.isFinite(Number(original)))payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!response.ok)continue;const data=await response.json();if(data?.ok&&data?.result?.message_id)messageIds[String(subscriber.chatId)]=data.result.message_id}catch(_){} }return event.type==='SIGNAL'?{messageIds}:true}
