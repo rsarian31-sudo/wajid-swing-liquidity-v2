@@ -118,11 +118,11 @@
         <div class="card-icon purple">☷</div>
         <h2>Trading Rules</h2>
         <ol>
-          <li>Wait for liquidity sweep (swing high/low)</li>
-          <li>Enter only on the immediately following 5M candle</li>
-          <li>Follow the generated trade plan</li>
-          <li>Respect the risk filter</li>
-          <li>Be patient — no overtrading</li>
+          <li>Wait for a valid liquidity sweep (stop-hunt wick + close back through level)</li>
+          <li>Require confirmation on the immediate next candle only</li>
+          <li>Enter at the OPEN of the candle after confirmation</li>
+          <li>5M entries must align with 15M market structure</li>
+          <li>Respect the risk filter — invalid setups stay WAIT</li>
         </ol>
       </article>
 
