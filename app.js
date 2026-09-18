@@ -89,8 +89,8 @@ function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0)).slice(0,50);
   $('history').innerHTML = rows.length ? rows.map((t) => {
     const rc = resultClass(t.result), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0);
-    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
-  }).join('') : '<tr><td colspan="8">No confirmed trades.</td></tr>';
+    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
+  }).join('') : '<tr><td colspan="11">No confirmed trades.</td></tr>';
 }
 function renderDailyHistory(trades) {
   const groups = new Map();
@@ -117,7 +117,7 @@ function renderHistory(history) {
   historyData = history || { summary:{}, trades:[] };
   renderSummary(historyData.summary || calcStats(historyData.trades));
   if (historyView === 'daily') renderDailyHistory(historyData.trades); else if (historyView === 'weekly') renderWeeklyHistory(historyData.trades); else {
-    $('historyView').innerHTML = `<div class="table-wrap"><table><thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>RESULT</th><th>R</th></tr></thead><tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>`;
+    $('historyView').innerHTML = `<div class="table-wrap"><table><thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>TP4</th><th>TP HIT</th><th>RESULT</th><th>R</th></tr></thead><tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>`;
     renderTradeRows(historyData.trades);
   }
 }
@@ -184,7 +184,7 @@ async function load() {
 
     const plan=data.tradePlan;
     const activeDirection=active?.direction||null;
-    const planFields=[plan?.entry,plan?.stopLoss,plan?.tp1,plan?.tp2,plan?.tp3];
+    const planFields=[plan?.entry,plan?.stopLoss,plan?.tp1,plan?.tp2,plan?.tp3,plan?.tp4];
     const validPlan=Boolean(active&&activeDirection&&plan&&planFields.every(v=>Number.isFinite(Number(v))&&Number(v)>0));
     $('planState').textContent=validPlan?`${activeDirection} ACTIVE`:'No active trade';
     $('entry').textContent=validPlan?fmt(plan.entry):'—';
