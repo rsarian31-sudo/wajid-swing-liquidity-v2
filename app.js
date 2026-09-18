@@ -171,8 +171,7 @@ async function load() {
     const active=data.activeTrade;
     const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
     const entryMarker=markEntryCandle(candles, signal, active);
-    const obMarkers=volumeOBMarkers(data.volumeOB);
-    candleSeries.setMarkers([...sweepMarkers, ...entryMarker, ...obMarkers].sort((a,b)=>a.time-b.time));
+    candleSeries.setMarkers([...sweepMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
 
     const obZone=data.volumeOB?.activeZone||null;
     setZoneLine(obTopSeries,candles,obZone,'top');
@@ -180,7 +179,7 @@ async function load() {
     setZoneLine(obSplitSeries,candles,obZone,'split');
 
     $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
-    $('signalMeta').textContent=signal.time?`Confirmed ${time(signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
+    $('signalMeta').textContent=signal.confirmationTime?`Confirmed ${time(signal.confirmationTime)} · Entry ${time(signal.entryTime||signal.time)}`:signal.time?`Entry ${time(signal.entryTime||signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
     $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
 
     const plan=data.tradePlan;
