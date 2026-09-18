@@ -1,7 +1,7 @@
 // CANONICAL Wajid Swing Liquidity strategy engine.
 // Signal model: liquidity sweep -> immediate next-candle confirmation -> next-candle OPEN entry.
 
-const CONFIG={swingLeft:15,swingRight:10,atrLength:14,sweepLookback:8,confirmationBars:1,outputSize:300,slAtrBuffer:.35,maxStopAtr:3,tp1R:1,tp2R:2,tp3R:3,newsWindowMinutes:45};
+const CONFIG={swingLeft:15,swingRight:10,atrLength:14,sweepLookback:8,confirmationBars:1,outputSize:300,slAtrBuffer:.35,maxStopAtr:3,tp1R:1,tp2R:2,tp3R:3,tp4R:4,newsWindowMinutes:45};
 function atr(c){const tr=[];for(let i=0;i<c.length;i++){const x=c[i],p=c[i-1];tr.push(p?Math.max(x.high-x.low,Math.abs(x.high-p.close),Math.abs(x.low-p.close)):x.high-x.low)}const a=tr.slice(Math.max(0,tr.length-14));return a.length?a.reduce((x,y)=>x+y,0)/a.length:0}
 function avgVol(c,i,n=20){let s=0,k=0;for(let j=Math.max(0,i-n);j<i;j++){const v=Number(c[j].volume||0);if(v>0){s+=v;k++}}return k?s/k:0}
 function vol(c,i){const current=Number(c[i]?.volume||0),average=avgVol(c,i);return{available:current>0&&average>0,strong:current>=average,current,average}}
@@ -16,7 +16,44 @@ function plan(c,sig,a,entryCandle=null){if(!sig||sig.direction==='WAIT')return{p
 function analyze(c,news=null,entryCandle=null,context={}){const a=atr(c),sw=findSwings(c),li=levels(c,sw),ss=sweeps(c,sw),latest=ss.at(-1)||null,co=confirm(c,latest),structure=structureDirection(sw);let signal={value:'WAIT',direction:'WAIT',probability:0,score:0,time:null,price:null,sweep:null,confirmation:null,rejection:null,news:null,entryTime:null},tradePlan=null,riskFilter={passed:false,rejected:false,reason:null,structuralRisk:null,maxRisk:null,maxStopAtr:3};const ready=!!(latest&&co.confirmed&&entryCandle&&Number(entryCandle.time)===Number(c[co.index+1]?.time));if(ready){const st=score(c,latest,co,news),candidate={value:co.direction,direction:co.direction,probability:st.probability,score:st.score,time:co.time,price:Number(entryCandle.open),sweep:latest,confirmation:co,rejection:null,news:st.news,entryTime:entryCandle.time};const align=context?.requireStructureAlignment!==false&&context?.structureDirection&&co.direction!==context.structureDirection;if(align){signal={...candidate,value:'WAIT',direction:'WAIT',rejection:'HTF_STRUCTURE_MISMATCH',news:news||null}}else if(st.news?.blocked){signal={...candidate,value:'WAIT',direction:'WAIT',rejection:'HIGH_IMPACT_NEWS_OPPOSITE',news:news||null}}else{const pr=plan(c,candidate,a,entryCandle);riskFilter={passed:!pr.rejected,rejected:pr.rejected,reason:pr.reason,structuralRisk:pr.structuralRisk,maxRisk:pr.maxRisk,maxStopAtr:3};if(pr.rejected)signal={...candidate,value:'WAIT',direction:'WAIT',rejection:pr.reason};else{signal=candidate;tradePlan=pr.plan}}}const lh=sw.highs.at(-1),ll=sw.lows.at(-1),v=vol(c,c.length-1);return{swings:sw,liquidityLevels:li,sweeps:ss,signal,tradePlan,structureDirection:structure,diagnostics:{atr:a,latestPrice:c.at(-1)?.close||null,latestSwingHigh:lh?.price||null,latestSwingLow:ll?.price||null,latestSweep:latest?.type||'NONE',confirmation:co.confirmed?co.direction:'NONE',volumeAvailable:v.available,volumeConfirmed:v.strong,riskFilter,structureDirection:structure,entryRule:tradePlan?.entryRule||null,entryTime:tradePlan?.entryTime||null,news:news||null}}}
 function atrAt(c,i){const t=[];for(let j=Math.max(0,i-13);j<=i;j++){const x=c[j],p=c[j-1];t.push(p?Math.max(x.high-x.low,Math.abs(x.high-p.close),Math.abs(x.low-p.close)):x.high-x.low)}return t.length?t.reduce((a,b)=>a+b,0)/t.length:0}
 function historicalConfirmation(c,s){const direction=s.type==='SWING_LOW'?'BUY':s.type==='SWING_HIGH'?'SELL':null;if(!direction)return null;const i=s.index+1;if(i>=c.length)return null;const x=c[i],p=c[s.index],range=x.high-x.low,body=Math.abs(x.close-x.open);if(direction==='BUY'&&x.close>x.open&&x.close>p.high&&range>0&&body/range>=.55)return{index:i,time:x.time,price:x.close,direction};if(direction==='SELL'&&x.close<x.open&&x.close<p.low&&range>0&&body/range>=.55)return{index:i,time:x.time,price:x.close,direction};return null}
-function tradePlan(c,s,i,symbol){const entryIndex=i+1;if(entryIndex>=c.length)return null;const e=Number(c[entryIndex]?.open),sp=Number(s.price),a=atrAt(c,entryIndex);if(!Number.isFinite(e)||!Number.isFinite(sp)||!a)return null;const buy=s.type==='SWING_LOW',sell=s.type==='SWING_HIGH';if(!buy&&!sell)return null;const sl=buy?Math.min(sp,e-a*.35):Math.max(sp,e+a*.35);if(!Number.isFinite(sl)||sl<=0||sl===e)return null;const dist=Math.abs(e-sl),risk=Math.max(dist,a*.25);if(risk>a*3)return null;return{direction:buy?'BUY':'SELL',entry:e,stopLoss:sl,tp1:buy?e+risk:e-risk,tp2:buy?e+2*risk:e-2*risk,tp3:buy?e+3*risk:e-3*risk,risk,entryTime:c[entryIndex].time,confirmationTime:c[i].time,entryRule:'NEXT_CANDLE_OPEN'}}
-function resolve(c,i,p){for(let j=i;j<c.length;j++){const x=c[j],sl=p.direction==='BUY'?x.low<=p.stopLoss:x.high>=p.stopLoss,tp=p.direction==='BUY'?x.high>=p.tp2:x.low<=p.tp2;if(sl&&tp)return{status:'CLOSED',result:'LOSS',realizedR:-1,exit:p.stopLoss,exitTime:x.time,barIndex:j,reason:'SL and TP2 touched in same candle; conservative SL'};if(sl)return{status:'CLOSED',result:'LOSS',realizedR:-1,exit:p.stopLoss,exitTime:x.time,barIndex:j,reason:'SL hit before TP2'};if(tp)return{status:'CLOSED',result:'WIN',realizedR:2,exit:p.tp2,exitTime:x.time,barIndex:j,reason:'TP2 hit'}}return{status:'OPEN',result:'OPEN',realizedR:0,exit:null,exitTime:null,barIndex:null,reason:'TP2 and SL not reached in available history'}}
-function buildHistory(c,sw,symbol){const lv=[...(sw.highs||[]),...(sw.lows||[])].filter(x=>x&&(x.type==='SWING_HIGH'||x.type==='SWING_LOW')).map(x=>({...x,index:Number(x.index),price:Number(x.price)})).filter(x=>Number.isInteger(x.index)&&Number.isFinite(x.price)).sort((a,b)=>a.index-b.index);const out=[],used=new Set();let next=0;for(const s of lv){if(s.index<next||s.index>=c.length)continue;const key=s.type+':'+s.index+':'+s.price.toFixed(4);if(used.has(key))continue;const co=historicalConfirmation(c,s);if(!co||co.index<next)continue;const p=tradePlan(c,s,co.index,symbol);if(!p)continue;const o=resolve(c,co.index+1,p);used.add(key);out.push({id:String(p.entryTime)+'-'+p.direction,direction:p.direction,signalTime:p.entryTime,confirmationTime:p.confirmationTime,swingTime:c[s.index]?.time||null,swingType:s.type,swingPrice:Number(s.price.toFixed(2)),entry:Number(p.entry.toFixed(2)),stopLoss:Number(p.stopLoss.toFixed(2)),tp1:Number(p.tp1.toFixed(2)),tp2:Number(p.tp2.toFixed(2)),tp3:Number(p.tp3.toFixed(2)),risk:Number(p.risk.toFixed(2)),realizedR:Number(Number(o.realizedR||0).toFixed(2)),result:o.result,status:o.status,exit:o.exit==null?null:Number(o.exit.toFixed(2)),exitTime:o.exitTime,reason:o.reason,entryRule:'NEXT_CANDLE_OPEN'});if(o.barIndex!=null)next=o.barIndex+1;else break}return out}
+function tradePlan(c,s,i,symbol){const entryIndex=i+1;if(entryIndex>=c.length)return null;const e=Number(c[entryIndex]?.open),sp=Number(s.price),a=atrAt(c,entryIndex);if(!Number.isFinite(e)||!Number.isFinite(sp)||!a)return null;const buy=s.type==='SWING_LOW',sell=s.type==='SWING_HIGH';if(!buy&&!sell)return null;const sl=buy?Math.min(sp,e-a*.35):Math.max(sp,e+a*.35);if(!Number.isFinite(sl)||sl<=0||sl===e)return null;const dist=Math.abs(e-sl),risk=Math.max(dist,a*.25);if(risk>a*3)return null;return{direction:buy?'BUY':'SELL',entry:e,stopLoss:sl,tp1:buy?e+risk:e-risk,tp2:buy?e+2*risk:e-2*risk,tp3:buy?e+3*risk:e-3*risk,tp4:buy?e+4*risk:e-4*risk,risk,entryTime:c[entryIndex].time,confirmationTime:c[i].time,entryRule:'NEXT_CANDLE_OPEN'}}
+function resolve(c,i,p){
+  const hit={tp1:false,tp2:false,tp3:false,tp4:false};
+  let realizedR=0;
+  for(let j=i;j<c.length;j++){
+    const x=c[j];
+    const sl=p.direction==='BUY'?x.low<=p.stopLoss:x.high>=p.stopLoss;
+    const tps=[
+      ['tp1',p.direction==='BUY'?x.high>=p.tp1:x.low<=p.tp1,1],
+      ['tp2',p.direction==='BUY'?x.high>=p.tp2:x.low<=p.tp2,2],
+      ['tp3',p.direction==='BUY'?x.high>=p.tp3:x.low<=p.tp3,3],
+      ['tp4',p.direction==='BUY'?x.high>=p.tp4:x.low<=p.tp4,4]
+    ];
+    const newly=tps.filter(([k,yes])=>yes&&!hit[k]);
+    for(const [k,yes,r] of newly){hit[k]=true;realizedR+=r;}
+    if(sl){
+      realizedR-=1;
+      return{status:'CLOSED',result:'LOSS',realizedR,hit,exit:p.stopLoss,exitTime:x.time,barIndex:j,reason:'SL hit; realized R includes all TP milestones reached before SL'};
+    }
+    if(hit.tp4)return{status:'CLOSED',result:'WIN',realizedR,hit,exit:p.tp4,exitTime:x.time,barIndex:j,reason:'TP4 hit'};
+  }
+  return{status:'OPEN',result:'OPEN',realizedR,hit,exit:null,exitTime:null,barIndex:null,reason:'TP4 and SL not reached in available history'}
+}
+function buildHistory(c,sw,symbol){
+  const lv=[...(sw.highs||[]),...(sw.lows||[])].filter(x=>x&&(x.type==='SWING_HIGH'||x.type==='SWING_LOW')).map(x=>({...x,index:Number(x.index),price:Number(x.price)})).filter(x=>Number.isInteger(x.index)&&Number.isFinite(x.price)).sort((a,b)=>a.index-b.index);
+  const out=[],used=new Set();
+  for(const s of lv){
+    if(s.index>=c.length)continue;
+    const key=s.type+':'+s.index+':'+s.price.toFixed(4);
+    if(used.has(key))continue;
+    const co=historicalConfirmation(c,s);
+    if(!co)continue;
+    const p=tradePlan(c,s,co.index,symbol);
+    if(!p)continue;
+    const o=resolve(c,co.index+1,p);
+    used.add(key);
+    out.push({id:String(p.entryTime)+'-'+p.direction+'-'+s.index,direction:p.direction,signalTime:p.entryTime,confirmationTime:p.confirmationTime,swingTime:c[s.index]?.time||null,swingType:s.type,swingPrice:Number(s.price.toFixed(2)),entry:Number(p.entry.toFixed(2)),stopLoss:Number(p.stopLoss.toFixed(2)),tp1:Number(p.tp1.toFixed(2)),tp2:Number(p.tp2.toFixed(2)),tp3:Number(p.tp3.toFixed(2)),tp4:Number(p.tp4.toFixed(2)),risk:Number(p.risk.toFixed(2)),tp1Hit:!!o.hit?.tp1,tp2Hit:!!o.hit?.tp2,tp3Hit:!!o.hit?.tp3,tp4Hit:!!o.hit?.tp4,hitTPs:Object.keys(o.hit||{}).filter(k=>o.hit[k]),realizedR:Number(Number(o.realizedR||0).toFixed(2)),result:o.result,status:o.status,exit:o.exit==null?null:Number(o.exit.toFixed(2)),exitTime:o.exitTime,reason:o.reason,entryRule:'NEXT_CANDLE_OPEN'});
+  }
+  return out;
+}
 export{CONFIG,analyze,buildHistory,structureDirection};
