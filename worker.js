@@ -1,5 +1,6 @@
 import { onRequest as dataRequest } from './functions/api/data.js';
 import { onRequest as healthRequest } from './functions/api/health.js';
+import { onRequest as cryptoDataRequest } from './functions/api/crypto.js';
 import { CONFIG, analyze, buildHistory } from './src/strategy.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
@@ -19,6 +20,7 @@ export default {
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/data') return dataRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     if (url.pathname === '/api/health') return healthRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
+    if (url.pathname === '/api/crypto/data') return cryptoDataRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     return env.ASSETS.fetch(request);
   },
 
