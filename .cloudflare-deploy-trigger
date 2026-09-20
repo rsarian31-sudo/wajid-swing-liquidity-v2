@@ -1,2 +1,4 @@
 Deployment trigger for Cloudflare Workers.
 Restored known-good Telegram webhook worker from commit 86cf30ec6ad926f6cb314ae5d4cc2043f4f69731.
+
+Deployment trigger refreshed 2026-09-20: crypto page + Binance API + live WebSocket.
