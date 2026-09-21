@@ -49,11 +49,16 @@ export async function onRequest({request,env,waitUntil}){
     const closed=candles.filter(c=>c.time+seconds<=now);
     const analysis=analyze(closed);
     const trades=buildHistory(closed).map(t=>({...t,interval}));
+    const openTrades=trades.filter(t=>t.result==='OPEN');
     const completed=trades.filter(t=>t.result!=='OPEN');
-    const summary={totalTrades:trades.length,wins:completed.filter(t=>t.result==='WIN').length,losses:completed.filter(t=>t.result==='LOSS').length,open:trades.filter(t=>t.result==='OPEN').length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
+    const summary={totalTrades:trades.length,wins:completed.filter(t=>t.result==='WIN').length,losses:completed.filter(t=>t.result==='LOSS').length,open:openTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
-    const active=analysis.signal.direction!=='WAIT'&&analysis.tradePlan?{id:interval+':'+analysis.signal.time+':'+analysis.signal.direction,interval,direction:analysis.signal.direction,signalTime:analysis.signal.time,entry:analysis.tradePlan.entry,stopLoss:analysis.tradePlan.stopLoss,tp1:analysis.tradePlan.tp1,tp2:analysis.tradePlan.tp2,tp3:analysis.tradePlan.tp3,tp4:analysis.tradePlan.tp4,risk:analysis.tradePlan.risk,hitTPs:[],result:'OPEN',status:'OPEN',entryRule:analysis.tradePlan.entryRule,zoneId:analysis.signal.zoneId}:null;
-    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:CONFIG},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:analysis.tradePlan,activeTrade:active,activeTrades:active?[active]:[],diagnostics:analysis.diagnostics,news:null,volumeOB:analysis.volumeOB,history:{summary,trades}});
+    // Current confirmed signal is already represented in buildHistory. Reuse the
+    // resolved lifecycle record so the dashboard cannot invent a second OPEN trade.
+    const activeTrades=openTrades;
+    const active=activeTrades[0]||null;
+    const activePlan=active?{entry:active.entry,stopLoss:active.stopLoss,tp1:active.tp1,tp2:active.tp2,tp3:active.tp3,tp4:active.tp4,risk:active.risk,entryRule:active.entryRule}:null;
+    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:CONFIG},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:analysis.diagnostics,news:null,volumeOB:analysis.volumeOB,history:{summary,trades}});
   }catch(e){return json({success:false,error:e?.message||'Market data error'},500)}
 }
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'}})}
