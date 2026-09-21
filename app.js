@@ -65,9 +65,9 @@ function syncTimeframeUI() {
   $('signalLabel').textContent = `${tfLabel()} CURRENT SIGNAL`;
   $('marketTf').textContent = tfLong();
 }
-function resultClass(result) { return result === 'WIN' ? 'win' : result === 'LOSS' ? 'loss' : 'open'; }
+function resultClass(result) { return result === 'WIN' || result === 'FULL TP HIT' ? 'win' : result === 'LOSS' ? 'loss' : 'open'; }
 function calcStats(trades) {
-  const list = trades || [], wins = list.filter(t => t.result === 'WIN').length, losses = list.filter(t => t.result === 'LOSS').length, open = list.filter(t => t.result === 'OPEN').length;
+  const list = trades || [], wins = list.filter(t => t.result === 'WIN' || t.result === 'FULL TP HIT').length, losses = list.filter(t => t.result === 'LOSS').length, open = list.filter(t => t.result === 'OPEN').length;
   const totalR = list.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
   return { signals: list.length, wins, losses, open, winRate: wins + losses ? Number((wins / (wins + losses) * 100).toFixed(2)) : 0, totalR: Number(totalR.toFixed(2)) };
 }
