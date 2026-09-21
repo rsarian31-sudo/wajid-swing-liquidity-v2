@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-const RESET_VERSION='volume-ob-retest-v1';
+const RESET_VERSION='volume-ob-creation-v2';
 const EMPTY=()=>({version:3,ruleVersion:RESET_VERSION,intervals:{'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION}},telegram:{offset:0,subscribers:[]}});
 export class WajidTradeState extends DurableObject{async fetch(request){const url=new URL(request.url);let state=await this.ctx.storage.get('state');if(!state||state.ruleVersion!==RESET_VERSION){state=EMPTY();await this.ctx.storage.put('state',state)}if(request.method==='GET')return json(state);if(request.method==='POST'&&url.pathname==='/replace'){const body=await request.json();if(!body||typeof body!=='object')return json({error:'Invalid state'},400);await this.ctx.storage.put('state',body);return json(body)}return json({error:'Not found'},404)}}
 function json(value,status=200){return new Response(JSON.stringify(value),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}
