@@ -6,7 +6,7 @@ import { WajidTradeState } from './state.js';
 
 const INTERVALS = ['1min', '5min', '15min'];
 const SYMBOL = 'XAU/USD';
-const RULE_VERSION = 'volume-ob-retest-v1';
+const RULE_VERSION = 'volume-ob-creation-v2';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
