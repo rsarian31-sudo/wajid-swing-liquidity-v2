@@ -297,7 +297,6 @@ export function analyze(candles = []) {
 
 function resolveHistoricalTrade(trade, candles, startIndex) {
   const levels = [trade.tp1, trade.tp2, trade.tp3, trade.tp4].map(Number);
-  const entry = Number(trade.entry);
   const sl = Number(trade.stopLoss);
   const buy = trade.direction === 'BUY';
   const hitTPs = [];
@@ -306,13 +305,12 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
   let status = 'OPEN';
   let exit = null;
   let exitTime = null;
-  let reason = 'Waiting for TP4 or SL';
+  let reason = 'Waiting for TP3 WIN or TP4 Full TP HIT';
 
   for (let i = startIndex + 1; i < candles.length; i++) {
     const c = candles[i];
     const high = Number(c.high), low = Number(c.low);
 
-    // If SL and a TP are touched inside the same candle, resolve conservatively as SL first.
     const stopTouched = buy ? low <= sl : high >= sl;
     const newlyHit = [];
     for (let j = 0; j < levels.length; j++) {
@@ -320,29 +318,61 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       const targetTouched = buy ? high >= levels[j] : low <= levels[j];
       if (targetTouched) newlyHit.push(j + 1);
     }
-    if (stopTouched && newlyHit.length) {
+
+    // If TP3 was already achieved, the trade has officially won.
+    // A later SL must never downgrade WIN to LOSS.
+    if (hitTPs.includes(3)) {
+      for (const tp of newlyHit) {
+        hitTPs.push(tp);
+        realizedR += tp;
+      }
+      if (hitTPs.includes(4)) {
+        result = 'FULL TP HIT';
+        status = 'CLOSED';
+        exit = levels[3];
+        exitTime = c.time;
+        reason = 'TP4_FULL';
+        break;
+      }
+      result = 'WIN';
+      status = 'OPEN';
+      reason = 'TP3_WIN';
+      continue;
+    }
+
+    // Before TP3, an SL ends the trade. If SL and TP3 are touched in the
+    // same candle, keep the conservative SL-first rule.
+    const reachesTP3 = newlyHit.includes(3);
+    if (stopTouched && reachesTP3) {
       result = 'LOSS';
       status = 'CLOSED';
       exit = sl;
       exitTime = c.time;
-      realizedR += -1;
-      reason = hitTPs.length ? 'SL_AFTER_TP' : 'SL_BEFORE_TP';
+      realizedR = -1;
+      reason = 'SL_BEFORE_TP3';
       break;
     }
 
     for (const tp of newlyHit) {
       hitTPs.push(tp);
-      // TP milestones accumulate into total R as requested.
       realizedR += tp;
     }
 
     if (hitTPs.includes(4)) {
-      result = 'WIN';
+      result = 'FULL TP HIT';
       status = 'CLOSED';
       exit = levels[3];
       exitTime = c.time;
-      reason = 'TP4';
+      reason = 'TP4_FULL';
       break;
+    }
+
+    if (hitTPs.includes(3)) {
+      // TP3 is the official WIN milestone. Keep monitoring for TP4.
+      result = 'WIN';
+      status = 'OPEN';
+      reason = 'TP3_WIN';
+      continue;
     }
 
     if (stopTouched) {
@@ -350,8 +380,8 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       status = 'CLOSED';
       exit = sl;
       exitTime = c.time;
-      realizedR += -1;
-      reason = 'SL_AFTER_TP';
+      realizedR = -1;
+      reason = 'SL_BEFORE_TP3';
       break;
     }
   }
