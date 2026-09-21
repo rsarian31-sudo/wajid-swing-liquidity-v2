@@ -295,12 +295,89 @@ export function analyze(candles = []) {
   };
 }
 
+function resolveHistoricalTrade(trade, candles, startIndex) {
+  const levels = [trade.tp1, trade.tp2, trade.tp3, trade.tp4].map(Number);
+  const entry = Number(trade.entry);
+  const sl = Number(trade.stopLoss);
+  const buy = trade.direction === 'BUY';
+  const hitTPs = [];
+  let realizedR = 0;
+  let result = 'OPEN';
+  let status = 'OPEN';
+  let exit = null;
+  let exitTime = null;
+  let reason = 'Waiting for TP4 or SL';
+
+  for (let i = startIndex + 1; i < candles.length; i++) {
+    const c = candles[i];
+    const high = Number(c.high), low = Number(c.low);
+
+    // If SL and a TP are touched inside the same candle, resolve conservatively as SL first.
+    const stopTouched = buy ? low <= sl : high >= sl;
+    const newlyHit = [];
+    for (let j = 0; j < levels.length; j++) {
+      if (hitTPs.includes(j + 1)) continue;
+      const targetTouched = buy ? high >= levels[j] : low <= levels[j];
+      if (targetTouched) newlyHit.push(j + 1);
+    }
+    if (stopTouched && newlyHit.length) {
+      result = 'LOSS';
+      status = 'CLOSED';
+      exit = sl;
+      exitTime = c.time;
+      realizedR += -1;
+      reason = hitTPs.length ? 'SL_AFTER_TP' : 'SL_BEFORE_TP';
+      break;
+    }
+
+    for (const tp of newlyHit) {
+      hitTPs.push(tp);
+      // TP milestones accumulate into total R as requested.
+      realizedR += tp;
+    }
+
+    if (hitTPs.includes(4)) {
+      result = 'WIN';
+      status = 'CLOSED';
+      exit = levels[3];
+      exitTime = c.time;
+      reason = 'TP4';
+      break;
+    }
+
+    if (stopTouched) {
+      result = 'LOSS';
+      status = 'CLOSED';
+      exit = sl;
+      exitTime = c.time;
+      realizedR += -1;
+      reason = 'SL_AFTER_TP';
+      break;
+    }
+  }
+
+  return {
+    ...trade,
+    tp1Hit: hitTPs.includes(1),
+    tp2Hit: hitTPs.includes(2),
+    tp3Hit: hitTPs.includes(3),
+    tp4Hit: hitTPs.includes(4),
+    hitTPs,
+    realizedR: Number(realizedR.toFixed(2)),
+    result,
+    status,
+    exit,
+    exitTime,
+    reason
+  };
+}
+
 export function buildHistory(candles = []) {
   const result = buildAnalysis(candles);
   if (!result) return [];
   return result.signals.slice(-200).map((s, index) => {
     const plan = makeTradePlan(s,candles);
-    return {
+    const base = {
       id:`hist-${s.time}-${s.direction}-${index}`,
       interval:null,
       direction:s.direction,
@@ -309,9 +386,12 @@ export function buildHistory(candles = []) {
       entry:plan?.entry??s.price,
       stopLoss:plan?.stopLoss??null,
       tp1:plan?.tp1??null,tp2:plan?.tp2??null,tp3:plan?.tp3??null,tp4:plan?.tp4??null,
-      risk:plan?.risk??null,realizedR:0,tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],
-      result:'OPEN',status:'OPEN',exit:null,exitTime:null,reason:'Historical retest signal',
+      risk:plan?.risk??null,realizedR:0,
+      tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],
+      result:'OPEN',status:'OPEN',exit:null,exitTime:null,reason:'Waiting for TP4 or SL',
       entryRule:'RETEST_REACTION_CLOSE',zoneId:s.zoneId
     };
+    const startIndex = candles.findIndex(c => Number(c.time) === Number(s.time));
+    return resolveHistoricalTrade(base, candles, startIndex);
   });
 }
