@@ -221,16 +221,50 @@ function makeTradePlan(signal, candles) {
 
 function buildAnalysis(candles) {
   if (!Array.isArray(candles) || candles.length < 40) return null;
+
   const st = supertrend(candles, 10, CONFIG.supertrendMultiplier);
   const zones = createZones(candles, st);
   const processed = processRetests(candles, zones);
-  const signals = processed.signals;
-  const lastSignal = signals.at(-1) || null;
-  const latestSignal = lastSignal && lastSignal.time === candles.at(-1)?.time ? lastSignal : null;
+
+  // The TradingView workflow treats the appearance of a valid OB box as
+  // the actionable signal event. Retest information remains available as
+  // metadata, but a retest is no longer required to create the signal.
+  const boxSignals = processed.zones.map(z => ({
+    time: z.createdTime,
+    direction: z.direction,
+    price: Number((z.direction === 'BUY' ? z.top : z.bottom).toFixed(3)),
+    zoneId: z.id,
+    zone: { ...z },
+    buyPercent: z.buyPercent,
+    sellPercent: z.sellPercent,
+    confirmation: 'ORDER_BLOCK_CREATED'
+  })).filter(s => Number.isFinite(Number(s.time)));
+
+  const latestTime = candles.at(-1)?.time;
+  const latestSignal = boxSignals
+    .filter(s => Number(s.time) === Number(latestTime))
+    .at(-1) || null;
+
   const activeZones = processed.zones.filter(z => !z.broken);
-  const latest = candles.at(-1);
-  const confidence = latestSignal ? clamp(Math.round((Math.max(latestSignal.buyPercent, latestSignal.sellPercent) * 0.65) + latestSignal.reactionBody * 35), 0, 99) : 0;
-  return { st, zones:activeZones, signals, latestSignal, confidence };
+  const confidence = latestSignal
+    ? clamp(
+        Math.round(
+          Math.max(latestSignal.buyPercent, latestSignal.sellPercent) * 0.65 +
+          35
+        ),
+        0,
+        99
+      )
+    : 0;
+
+  return {
+    st,
+    zones: activeZones,
+    signals: boxSignals,
+    retestSignals: processed.signals,
+    latestSignal,
+    confidence
+  };
 }
 
 export function analyze(candles = []) {
@@ -262,7 +296,7 @@ export function analyze(candles = []) {
   } : {
     value:'WAIT', direction:'WAIT', probability:0, score:0, time:null, price:latest.close,
     confirmationTime:null, entryTime:null,
-    rejection: latestZone ? 'WAITING_FOR_BOX_RETEST_REACTION' : 'NO_ACTIVE_ORDER_BLOCK'
+    rejection: latestZone ? 'WAITING_FOR_ORDER_BLOCK' : 'NO_ACTIVE_ORDER_BLOCK'
   };
 
   const swings = {
@@ -272,7 +306,7 @@ export function analyze(candles = []) {
 
   return {
     swings, liquidityLevels:[], sweeps:[], zones:result.zones,
-    volumeOB:{zones:result.zones,activeZone:latestZone,signals:result.signals},
+    volumeOB:{zones:result.zones,activeZone:latestZone,signals:result.signals,retestSignals:result.retestSignals||[]},
     signal,
     tradePlan:makeTradePlan(latestSignal,candles),
     structureDirection:latestTrend,
@@ -282,15 +316,15 @@ export function analyze(candles = []) {
       latestSwingHigh:swings.highs.at(-1)?.price??null,
       latestSwingLow:swings.lows.at(-1)?.price??null,
       latestSweep:null,
-      confirmation:latestSignal?'BOX_RETEST_REACTION':'WAITING_FOR_RETEST',
+      confirmation:latestSignal?'ORDER_BLOCK_CREATED':'WAITING_FOR_ORDER_BLOCK',
       volumeAvailable:candles.some(c=>n(c.volume,0)>0),
       volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= CONFIG.minVolumePercent : false,
       riskFilter:{passed:!!latestSignal,rejected:false,reason:latestSignal?null:'WAIT'},
-      entryRule:latestSignal?'RETEST_REACTION_CLOSE':null,
+      entryRule:latestSignal?'ORDER_BLOCK_CREATION_CLOSE':null,
       entryTime:latestSignal?.time??null,
       bigMoveScore:0,
       rejection:signal.rejection,
-      logic:'VOLUME_OB_RETEST'
+      logic:'VOLUME_OB_CREATION_SIGNAL'
     }
   };
 }
@@ -419,7 +453,7 @@ export function buildHistory(candles = []) {
       risk:plan?.risk??null,realizedR:0,
       tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],
       result:'OPEN',status:'OPEN',exit:null,exitTime:null,reason:'Waiting for TP4 or SL',
-      entryRule:'RETEST_REACTION_CLOSE',zoneId:s.zoneId
+      entryRule:'ORDER_BLOCK_CREATION_CLOSE',zoneId:s.zoneId
     };
     const startIndex = candles.findIndex(c => Number(c.time) === Number(s.time));
     return resolveHistoricalTrade(base, candles, startIndex);
