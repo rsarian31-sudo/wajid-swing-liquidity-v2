@@ -214,9 +214,11 @@ function makeTradePlan(signal, candles) {
   const zone = signal.zone;
   const risk = signal.direction === 'BUY' ? entry - zone.bottom : zone.top - entry;
   const safeRisk = Math.max(risk, Math.abs(entry) * 0.00025);
+  // Entry = close of the candle that creates/confirms the OB.
+  // SL = the far edge of the OB box: BUY uses box bottom, SELL uses box top.
   const stopLoss = signal.direction === 'BUY' ? zone.bottom : zone.top;
   const tps = CONFIG.rr.map(r => Number((signal.direction === 'BUY' ? entry + safeRisk*r : entry - safeRisk*r).toFixed(3)));
-  return { entry:Number(entry.toFixed(3)), stopLoss:Number(stopLoss.toFixed(3)), tp1:tps[0], tp2:tps[1], tp3:tps[2], tp4:tps[3], risk:Number(safeRisk.toFixed(3)), rr:'1:1 / 1:2 / 1:3 / 1:4', entryRule:'RETEST_REACTION_CLOSE' };
+  return { entry:Number(entry.toFixed(3)), stopLoss:Number(stopLoss.toFixed(3)), tp1:tps[0], tp2:tps[1], tp3:tps[2], tp4:tps[3], risk:Number(safeRisk.toFixed(3)), rr:'1:1 / 1:2 / 1:3 / 1:4', entryRule:'ORDER_BLOCK_CREATED_ENTRY', stopRule:'OB_BOX_EDGE' };
 }
 
 function buildAnalysis(candles) {
@@ -232,7 +234,7 @@ function buildAnalysis(candles) {
   const boxSignals = processed.zones.map(z => ({
     time: z.createdTime,
     direction: z.direction,
-    price: Number((z.direction === 'BUY' ? z.top : z.bottom).toFixed(3)),
+    price: Number((candles.find(c => Number(c.time) === Number(z.createdTime))?.close ?? (z.direction === 'BUY' ? z.top : z.bottom)).toFixed(3)),
     zoneId: z.id,
     zone: { ...z },
     buyPercent: z.buyPercent,
