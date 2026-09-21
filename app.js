@@ -192,6 +192,7 @@ async function load() {
     $('tp1').textContent=validPlan?fmt(plan.tp1):'—';
     $('tp2').textContent=validPlan?fmt(plan.tp2):'—';
     $('tp3').textContent=validPlan?fmt(plan.tp3):'—';
+    $('tp4').textContent=validPlan?fmt(plan.tp4):'—';
     $('risk').textContent=validPlan?fmt(plan.risk):'—';
     setFlat(entrySeries,candles,validPlan?plan.entry:null);
     setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
