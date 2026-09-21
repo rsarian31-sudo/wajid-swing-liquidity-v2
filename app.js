@@ -129,9 +129,9 @@ function setHistoryView(view) {
 function renderDiagnostics(q = {}) {
   const risk = q.riskFilter || {};
   $('diagnostics').innerHTML = [
-    ['Latest price', fmt(q.latestPrice)], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
-    ['Latest sweep', q.latestSweep || 'NONE'], ['Confirmation', q.confirmation || 'NONE'], ['Big Move score', q.bigMoveScore ?? 0], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
-    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'STOP_TOO_WIDE'}` : risk.passed ? 'PASSED' : 'WAIT']
+    ['Latest price', fmt(q.latestPrice)], ['Trend', q.logic==='VOLUME_OB_RETEST' ? (q.confirmation || 'WAIT') : '—'], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
+    ['Box / Retest', q.confirmation || 'WAITING_FOR_RETEST'], ['Reaction entry', q.entryRule || '—'], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
+    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'INVALID'}` : risk.passed ? 'PASSED' : 'WAIT']
   ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
 }
 
@@ -169,9 +169,9 @@ async function load() {
 
     const signal=data.signal||{};
     const active=data.activeTrade;
-    const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
+    const retestMarkers=volumeOBMarkers(data.volumeOB); const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
     const entryMarker=markEntryCandle(candles, signal, active);
-    candleSeries.setMarkers([...sweepMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
+    candleSeries.setMarkers([...sweepMarkers, ...retestMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
 
     const obZone=data.volumeOB?.activeZone||null;
     setZoneLine(obTopSeries,candles,obZone,'top');
