@@ -1,12 +1,12 @@
 import { onRequest as dataRequest } from './functions/api/data.js';
 import { onRequest as healthRequest } from './functions/api/health.js';
-import { CONFIG, analyze, buildHistory } from './src/strategy.js';
+import { CONFIG } from './src/strategy.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
 
 const INTERVALS = ['1min', '5min', '15min'];
 const SYMBOL = 'XAU/USD';
-const RULE_VERSION = 'strong-sd-magnet-v1';
+const RULE_VERSION = 'clean-slate-v1';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://liquidity-v2.rsarian31.workers.dev/telegram/webhook';
@@ -23,12 +23,7 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    if (env.TELEGRAM_BOT_TOKEN && env.TRADE_STATE) await ensureTelegramWebhook(env);
-    const minute = new Date(controller.scheduledTime).getUTCMinutes();
-    const intervals = minute % 15 === 0 ? ['15min','5min','1min'] : ['1min'];
-    for (const interval of intervals) {
-      try { await runInterval(interval, env); } catch (_) {}
-    }
+    // Clean slate: all previous trade/signal execution logic is disabled.
   }
 };
 
