@@ -225,7 +225,8 @@ function buildAnalysis(candles) {
   const zones = createZones(candles, st);
   const processed = processRetests(candles, zones);
   const signals = processed.signals;
-  const latestSignal = signals.at(-1) || null;
+  const lastSignal = signals.at(-1) || null;
+  const latestSignal = lastSignal && lastSignal.time === candles.at(-1)?.time ? lastSignal : null;
   const activeZones = processed.zones.filter(z => !z.broken);
   const latest = candles.at(-1);
   const confidence = latestSignal ? clamp(Math.round((Math.max(latestSignal.buyPercent, latestSignal.sellPercent) * 0.65) + latestSignal.reactionBody * 35), 0, 99) : 0;
