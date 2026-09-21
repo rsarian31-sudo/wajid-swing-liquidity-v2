@@ -324,7 +324,7 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
     if (hitTPs.includes(3)) {
       for (const tp of newlyHit) {
         hitTPs.push(tp);
-        realizedR += tp;
+        realizedR = Math.max(realizedR, tp);
       }
       if (hitTPs.includes(4)) {
         result = 'FULL TP HIT';
@@ -355,7 +355,7 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
 
     for (const tp of newlyHit) {
       hitTPs.push(tp);
-      realizedR += tp;
+      realizedR = Math.max(realizedR, tp);
     }
 
     if (hitTPs.includes(4)) {
