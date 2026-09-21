@@ -9,7 +9,7 @@
 
 export const CONFIG = {
   outputSize: 300,
-  ruleVersion: 'volume-ob-retest-v1',
+  ruleVersion: 'volume-ob-creation-v2',
   pivotStrength: 3,
   atrLength: 14,
   supertrendMultiplier: 3,
