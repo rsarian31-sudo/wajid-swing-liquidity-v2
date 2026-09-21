@@ -163,7 +163,8 @@ function advanceActiveTrade(active,candles){
       if(hit&&!next[flag]){
         next[flag]=true;
         next.hitTPs.push(label);
-        next.realizedR=Number((Number(next.realizedR||0)+r).toFixed(2));
+        // Realized R is the highest TP reached, not the sum of TP milestones.
+        next.realizedR=Number(Math.max(Number(next.realizedR||0), r).toFixed(2));
         notifications.push({type:label,interval:active.interval,trade:next,candleTime:candle.time});
         if(label==='TP4')return{active:null,closed:closeTrade(next,'FULL TP HIT',next.realizedR,next.tp4,candle.time,'TP4 hit'),notifications};
       }
