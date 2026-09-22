@@ -106,20 +106,11 @@ async function runInterval(interval, env) {
   await putState(state, current);
 }
 
-function isCrossTimeframeDuplicate(state, interval, signal) {
-  const signalTime = Number(signal?.time), signalPrice = Number(signal?.price), direction = signal?.direction;
-  if (!Number.isFinite(signalTime) || !Number.isFinite(signalPrice) || !direction) return false;
-  const other = interval === '1min' ? '5min' : interval === '5min' ? '15min' : '5min';
-  const otherBucket = state?.intervals?.[other];
-  const candidates = [];
-  if (otherBucket?.active) candidates.push(otherBucket.active);
-  if (Array.isArray(otherBucket?.trades)) candidates.push(...otherBucket.trades.slice(-12));
-  return candidates.some(t => {
-    if (!t || t.direction !== direction) return false;
-    const tTime = Number(t.signalTime), tPrice = Number(t.entry ?? t.signalPrice);
-    if (!Number.isFinite(tTime) || !Number.isFinite(tPrice)) return false;
-    return Math.abs(signalTime - tTime) <= DUPLICATE_WINDOW_SECONDS && Math.abs(signalPrice - tPrice) / Math.max(Math.abs(tPrice), 1) <= DUPLICATE_PRICE_TOLERANCE;
-  });
+function isCrossTimeframeDuplicate(_state, _interval, _signal) {
+  // Each timeframe is an independent signal stream.
+  // A valid 1M signal must not suppress a 5M/15M signal, and vice versa.
+  // Same-timeframe duplicates are already blocked by bucket.lastSignalId.
+  return false;
 }
 
 function ensureTelegramState(state, env) {
