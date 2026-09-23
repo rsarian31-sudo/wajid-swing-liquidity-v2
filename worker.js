@@ -137,7 +137,7 @@ async function runInterval(interval, env) {
     const events = advanceActiveTrade(active, candles);
     for (const event of events.notifications) await sendTelegram(env, event, telegram.subscribers);
     if (events.closed) {
-      bucket.trades.push(events.closed); bucket.trades = bucket.trades.slice(-200);
+      bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades);
       bucket.activeTrades = bucket.activeTrades.filter(t => t.id !== active.id);
     } else {
       bucket.activeTrades = bucket.activeTrades.map(t => t.id === active.id ? events.active : t);
