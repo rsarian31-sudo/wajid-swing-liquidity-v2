@@ -49,7 +49,7 @@ async function runInterval(interval, env) {
   const htfKey = interval === '1min' ? '5min' : interval === '5min' ? '15min' : null;
   const htfStructure = htfKey ? current?.intervals?.[htfKey]?.structureDirection || null : null;
   const news = await fetchNewsContext();
-  const analysis = analyze(candles, news, entryCandle, { structureDirection: htfStructure, requireStructureAlignment: !!htfStructure });
+  const analysis = analyze(candles, { interval, news, entryCandle, structureDirection: htfStructure, requireStructureAlignment: !!htfStructure });
   const bucket = current.intervals[interval] || { active: null, trades: [], lastSignalId: null, lastCandleTime: null, structureDirection: null };
   bucket.structureDirection = analysis.structureDirection || null;
 
@@ -63,7 +63,7 @@ async function runInterval(interval, env) {
   // Persist every discovered historical signal for this timeframe.
   // The previous version only seeded history once and capped it at 200 trades,
   // which caused older signals to disappear from the website/report.
-  const discoveredHistory = buildHistory(candles, analysis.swings, SYMBOL)
+  const discoveredHistory = buildHistory(candles, { interval })
     .filter(t => t.result !== 'OPEN')
     .map(t => ({ ...t, interval }));
   if (discoveredHistory.length) {
@@ -88,7 +88,7 @@ async function runInterval(interval, env) {
   // Catch up any signals created since the previous scheduler tick.
   // This prevents a delayed/skipped cron invocation from permanently losing a signal.
   const previousCandleTime = Number(bucket.lastCandleTime || 0);
-  const historicalSignals = buildHistory(candles)
+  const historicalSignals = buildHistory(candles, { interval })
     .filter(t => t && t.signalTime && t.direction && t.direction !== 'WAIT')
     .filter(t => previousCandleTime ? Number(t.signalTime) > previousCandleTime : false)
     .slice(-20);
