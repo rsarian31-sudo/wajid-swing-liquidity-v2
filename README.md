@@ -12,7 +12,7 @@ Gold-only XAU/USD trading dashboard.
 
 ## Rules
 - XAU/USD only
-- 5M and 15M only
+- 1M and 5M only
 - Strategy mathematics must not be changed without explicit approval
 - Frontend never calculates signals
 - TP1 = 1R milestone
