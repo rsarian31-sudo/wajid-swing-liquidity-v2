@@ -17,7 +17,9 @@ export const CONFIG = {
   minReactionBody: 0.35,
   maxRetestBars: 12,
   maxZones: 12,
-  rr: [1, 2, 3, 4]
+  rr: [1, 2, 3, 4],
+  minStopPoints: 1.8,
+  maxStopPoints: 10
 };
 
 // 1M keeps the existing behavior exactly. 5M/15M use the same OB engine,
@@ -226,13 +228,30 @@ function makeTradePlan(signal, candles, cfg = CONFIG) {
   const c = i >= 0 ? candles[i] : null;
   const entry = n(c?.close, signal.price);
   const zone = signal.zone;
+
+  // Keep the existing OB-box SL. Only reject setups whose existing SL
+  // distance is outside the requested 1.8–10 point range.
   const risk = signal.direction === 'BUY' ? entry - zone.bottom : zone.top - entry;
-  const safeRisk = Math.max(risk, Math.abs(entry) * 0.00025);
-  // Entry = close of the candle that creates/confirms the OB.
-  // SL = the far edge of the OB box: BUY uses box bottom, SELL uses box top.
+  const stopDistance = Math.abs(risk);
+  if (!(stopDistance >= cfg.minStopPoints && stopDistance <= cfg.maxStopPoints)) return null;
+
+  // The accepted setup's actual Entry→SL distance becomes 1R.
+  // TP1–TP4 are dynamically calculated from that exact risk.
+  const safeRisk = stopDistance;
   const stopLoss = signal.direction === 'BUY' ? zone.bottom : zone.top;
   const tps = cfg.rr.map(r => Number((signal.direction === 'BUY' ? entry + safeRisk*r : entry - safeRisk*r).toFixed(3)));
-  return { entry:Number(entry.toFixed(3)), stopLoss:Number(stopLoss.toFixed(3)), tp1:tps[0], tp2:tps[1], tp3:tps[2], tp4:tps[3], risk:Number(safeRisk.toFixed(3)), rr:'1:1 / 1:2 / 1:3 / 1:4', entryRule:'ORDER_BLOCK_CREATED_ENTRY', stopRule:'OB_BOX_EDGE' };
+  return {
+    entry:Number(entry.toFixed(3)),
+    stopLoss:Number(stopLoss.toFixed(3)),
+    tp1:tps[0],
+    tp2:tps[1],
+    tp3:tps[2],
+    tp4:tps[3],
+    risk:Number(safeRisk.toFixed(3)),
+    rr:'1:1 / 1:2 / 1:3 / 1:4',
+    entryRule:'ORDER_BLOCK_CREATED_ENTRY',
+    stopRule:'OB_BOX_EDGE'
+  };
 }
 
 function buildAnalysis(candles, options = {}) {
@@ -257,7 +276,10 @@ function buildAnalysis(candles, options = {}) {
     confirmation: 'ORDER_BLOCK_CREATED'
   })).filter(s => Number.isFinite(Number(s.time)));
 
-  const signals = cfg.requireRetest ? processed.signals : boxSignals;
+  const allSignals = cfg.requireRetest ? processed.signals : boxSignals;
+  // Only the requested SL-distance filter is applied here; all other
+  // signal-generation conditions remain unchanged.
+  const signals = allSignals.filter(s => !!makeTradePlan(s, candles, cfg));
   const latestTime = candles.at(-1)?.time;
   const latestSignal = signals
     .filter(s => Number(s.time) === Number(latestTime))
@@ -324,11 +346,13 @@ export function analyze(candles = [], options = {}) {
     lows: candles.map((c,i)=>isPivotLow(candles,i,cfg.pivotStrength)?{time:c.time,price:c.low}:null).filter(Boolean)
   };
 
+  const plan = makeTradePlan(latestSignal,candles,cfg);
+
   return {
     swings, liquidityLevels:[], sweeps:[], zones:result.zones,
     volumeOB:{zones:result.zones,activeZone:latestZone,signals:result.signals,retestSignals:result.retestSignals||[]},
     signal,
-    tradePlan:makeTradePlan(latestSignal,candles,cfg),
+    tradePlan:plan,
     structureDirection:latestTrend,
     diagnostics:{
       atr:result.st.atr.at(-1),
@@ -339,7 +363,7 @@ export function analyze(candles = [], options = {}) {
       confirmation:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION':'ORDER_BLOCK_CREATED'):'WAITING_FOR_ORDER_BLOCK',
       volumeAvailable:candles.some(c=>n(c.volume,0)>0),
       volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= cfg.minVolumePercent : false,
-      riskFilter:{passed:!!latestSignal,rejected:false,reason:latestSignal?null:'WAIT'},
+      riskFilter:{passed:!!plan,rejected:!!latestSignal&&!plan,reason:plan?null:(latestSignal?'SL_DISTANCE_OUT_OF_RANGE':'WAIT')},
       entryRule:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION_CLOSE':'ORDER_BLOCK_CREATION_CLOSE'):null,
       entryTime:latestSignal?.time??null,
       bigMoveScore:0,
