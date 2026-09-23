@@ -383,7 +383,7 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
   let status = 'OPEN';
   let exit = null;
   let exitTime = null;
-  let reason = 'Waiting for TP3 WIN or TP4 Full TP HIT';
+  let reason = 'Waiting for TP2 WIN or TP4 Full TP HIT';
 
   for (let i = startIndex + 1; i < candles.length; i++) {
     const c = candles[i];
@@ -397,9 +397,10 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       if (targetTouched) newlyHit.push(j + 1);
     }
 
-    // If TP3 was already achieved, the trade has officially won.
-    // A later SL must never downgrade WIN to LOSS.
-    if (hitTPs.includes(3)) {
+    // Once TP2 is reached, the trade is officially a WIN.
+    // It remains OPEN until TP4 or SL. A later SL closes the entry but
+    // does not downgrade the already-achieved WIN milestone.
+    if (hitTPs.includes(2)) {
       for (const tp of newlyHit) {
         hitTPs.push(tp);
         realizedR = Math.max(realizedR, tp);
@@ -412,22 +413,30 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
         reason = 'TP4_FULL';
         break;
       }
+      if (stopTouched) {
+        result = 'WIN';
+        status = 'CLOSED';
+        exit = sl;
+        exitTime = c.time;
+        reason = 'SL_AFTER_TP2_WIN';
+        break;
+      }
       result = 'WIN';
       status = 'OPEN';
-      reason = 'TP3_WIN';
+      reason = 'TP2_WIN';
       continue;
     }
 
-    // Before TP3, an SL ends the trade. If SL and TP3 are touched in the
+    // Before TP2, an SL ends the trade. If SL and TP2 are touched in the
     // same candle, keep the conservative SL-first rule.
-    const reachesTP3 = newlyHit.includes(3);
-    if (stopTouched && reachesTP3) {
+    const reachesTP2 = newlyHit.includes(2);
+    if (stopTouched && reachesTP2) {
       result = 'LOSS';
       status = 'CLOSED';
       exit = sl;
       exitTime = c.time;
       realizedR = -1;
-      reason = 'SL_BEFORE_TP3';
+      reason = 'SL_BEFORE_TP2';
       break;
     }
 
@@ -445,11 +454,11 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       break;
     }
 
-    if (hitTPs.includes(3)) {
-      // TP3 is the official WIN milestone. Keep monitoring for TP4.
+    if (hitTPs.includes(2)) {
+      // TP2 is the official WIN milestone. Keep monitoring for TP4 or SL.
       result = 'WIN';
       status = 'OPEN';
-      reason = 'TP3_WIN';
+      reason = 'TP2_WIN';
       continue;
     }
 
@@ -459,7 +468,7 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       exit = sl;
       exitTime = c.time;
       realizedR = -1;
-      reason = 'SL_BEFORE_TP3';
+      reason = 'SL_BEFORE_TP2';
       break;
     }
   }
