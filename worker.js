@@ -59,9 +59,14 @@ async function runInterval(interval, env) {
 
   const telegram = ensureTelegramState(current, env);
 
-  if (!bucket.trades.length) {
-    const seeded = buildHistory(candles, analysis.swings, SYMBOL).filter(t => t.result !== 'OPEN');
-    if (seeded.length) bucket.trades = seeded.slice(-200);
+  // Persist every discovered historical signal for this timeframe.
+  // The previous version only seeded history once and capped it at 200 trades,
+  // which caused older signals to disappear from the website/report.
+  const discoveredHistory = buildHistory(candles, analysis.swings, SYMBOL)
+    .filter(t => t.result !== 'OPEN')
+    .map(t => ({ ...t, interval }));
+  if (discoveredHistory.length) {
+    bucket.trades = mergeTrades(bucket.trades, discoveredHistory);
   }
 
   const activeList = Array.isArray(bucket.activeTrades) ? bucket.activeTrades : (bucket.active ? [bucket.active] : []);
@@ -69,7 +74,7 @@ async function runInterval(interval, env) {
   for (const activeTrade of activeList) {
     const events = advanceActiveTrade(activeTrade, candles);
     for (const event of events.notifications) await sendTelegram(env, event, telegram.subscribers);
-    if (events.closed) { bucket.trades.push(events.closed); bucket.trades = bucket.trades.slice(-200); }
+    if (events.closed) { bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades); }
     else stillActive.push(events.active);
   }
   bucket.activeTrades = stillActive;
@@ -139,6 +144,7 @@ async function runInterval(interval, env) {
     }
     bucket.active = bucket.activeTrades[0] || null;
   }
+  bucket.trades = dedupeTrades(bucket.trades);
   bucket.lastCandleTime = candles.at(-1)?.time ?? null;
   current.intervals[interval] = bucket;
   current.telegram = telegram;
@@ -202,6 +208,38 @@ function advanceActiveTrade(active,candles){
   }
   return{active:next,closed:null,notifications};
 }
+function tradeKey(t) {
+  return `${t.interval || ''}:${t.signalTime || ''}:${t.direction || ''}`;
+}
+
+function dedupeTrades(trades = []) {
+  const map = new Map();
+  for (const trade of trades || []) {
+    if (!trade) continue;
+    const key = tradeKey(trade);
+    if (!key || key === '::') continue;
+    const previous = map.get(key);
+    // Prefer the persisted/live record with the most complete lifecycle data.
+    if (!previous) map.set(key, trade);
+    else {
+      const previousScore =
+        Number(!!previous.exitTime) * 4 +
+        Number(!!previous.result && previous.result !== 'OPEN') * 2 +
+        Number(Array.isArray(previous.hitTPs) ? previous.hitTPs.length : 0);
+      const currentScore =
+        Number(!!trade.exitTime) * 4 +
+        Number(!!trade.result && trade.result !== 'OPEN') * 2 +
+        Number(Array.isArray(trade.hitTPs) ? trade.hitTPs.length : 0);
+      if (currentScore >= previousScore) map.set(key, trade);
+    }
+  }
+  return [...map.values()].sort((a,b) => Number(a.signalTime || 0) - Number(b.signalTime || 0));
+}
+
+function mergeTrades(existing = [], discovered = []) {
+  return dedupeTrades([...(existing || []), ...(discovered || [])]);
+}
+
 function closeTrade(trade,result,realizedR,exit,exitTime,reason){
   return{id:trade.id,interval:trade.interval,direction:trade.direction,signalTime:trade.signalTime,confirmationTime:trade.confirmationTime??null,swingTime:trade.sweep?.level?.time??null,swingType:trade.sweep?.level?.type??null,swingPrice:Number.isFinite(Number(trade.sweep?.level?.price))?Number(Number(trade.sweep.level.price).toFixed(2)):null,entry:trade.entry,stopLoss:trade.stopLoss,tp1:trade.tp1,tp2:trade.tp2,tp3:trade.tp3,tp4:trade.tp4,risk:trade.risk,tp1Hit:!!trade.tp1Hit,tp2Hit:!!trade.tp2Hit,tp3Hit:!!trade.tp3Hit,tp4Hit:!!trade.tp4Hit,hitTPs:Array.isArray(trade.hitTPs)?trade.hitTPs:[],realizedR,result,status:'CLOSED',exit:Number(exit.toFixed(2)),exitTime,reason,news:trade.news||null,entryRule:'ORDER_BLOCK_CREATED_ENTRY'};
 }
