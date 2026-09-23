@@ -51,7 +51,7 @@ export async function onRequest({request,env,waitUntil}){
     const trades=buildHistory(closed).map(t=>({...t,interval}));
     const openTrades=trades.filter(t=>t.result==='OPEN');
     const completed=trades.filter(t=>t.result!=='OPEN');
-    const summary={totalTrades:trades.length,wins:completed.filter(t=>t.result==='WIN').length,losses:completed.filter(t=>t.result==='LOSS').length,open:openTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
+    const summary={totalTrades:trades.length,wins:completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT').length,losses:completed.filter(t=>t.result==='LOSS').length,open:openTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
     // Current confirmed signal is already represented in buildHistory. Reuse the
     // resolved lifecycle record so the dashboard cannot invent a second OPEN trade.
