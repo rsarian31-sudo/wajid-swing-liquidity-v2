@@ -22,13 +22,12 @@ export const CONFIG = {
   maxStopPoints: 10
 };
 
-// 1M keeps the existing behavior exactly. 5M/15M use the same OB engine,
-// but require a real box retest + closed reaction before creating a trade signal.
-// This prevents higher-timeframe entries from firing on the displacement candle itself.
+// 1M keeps the existing behavior exactly. 5M uses the same OB engine,
+// but requires a real box retest + closed reaction before creating a trade signal.
+// This prevents 5M entries from firing on the displacement candle itself.
 const TIMEFRAME_CONFIG = {
   '1min': { requireRetest: false, minReactionBody: CONFIG.minReactionBody, minVolumePercent: CONFIG.minVolumePercent },
-  '5min': { requireRetest: true, minReactionBody: 0.45, minVolumePercent: 58 },
-  '15min': { requireRetest: true, minReactionBody: 0.55, minVolumePercent: 62 }
+  '5min': { requireRetest: true, minReactionBody: 0.45, minVolumePercent: 58 }
 };
 
 function strategyConfig(interval) {
@@ -263,7 +262,7 @@ function buildAnalysis(candles, options = {}) {
   const processed = processRetests(candles, zones, cfg);
 
   // 1M preserves the existing OB-creation signal behavior.
-  // 5M/15M only become actionable after the price returns into the box
+  // 5M only becomes actionable after the price returns into the box
   // and a closed candle confirms the reaction.
   const boxSignals = processed.zones.map(z => ({
     time: z.createdTime,
