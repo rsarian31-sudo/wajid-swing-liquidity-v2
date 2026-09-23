@@ -20,6 +20,20 @@ export const CONFIG = {
   rr: [1, 2, 3, 4]
 };
 
+// 1M keeps the existing behavior exactly. 5M/15M use the same OB engine,
+// but require a real box retest + closed reaction before creating a trade signal.
+// This prevents higher-timeframe entries from firing on the displacement candle itself.
+const TIMEFRAME_CONFIG = {
+  '1min': { requireRetest: false, minReactionBody: CONFIG.minReactionBody, minVolumePercent: CONFIG.minVolumePercent },
+  '5min': { requireRetest: true, minReactionBody: 0.45, minVolumePercent: 58 },
+  '15min': { requireRetest: true, minReactionBody: 0.55, minVolumePercent: 62 }
+};
+
+function strategyConfig(interval) {
+  const tf = TIMEFRAME_CONFIG[interval] || TIMEFRAME_CONFIG['1min'];
+  return { ...CONFIG, ...tf };
+}
+
 const n = (v, fallback = 0) => Number.isFinite(Number(v)) ? Number(v) : fallback;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -93,23 +107,23 @@ function directionalVolume(candles, start, end) {
   return { buyPercent: Math.round(buy / total * 100), sellPercent: Math.round(sell / total * 100) };
 }
 
-function reactionQuality(c, direction) {
+function reactionQuality(c, direction, minBody = CONFIG.minReactionBody) {
   const range = Math.max(c.high - c.low, 1e-9);
   const body = Math.abs(c.close - c.open) / range;
   const closePos = (c.close - c.low) / range;
   const bullish = direction === 'BUY';
   const aligned = bullish ? c.close > c.open : c.close < c.open;
   const closeStrong = bullish ? closePos >= 0.60 : closePos <= 0.40;
-  return { body, closePos, aligned, closeStrong, valid: aligned && closeStrong && body >= CONFIG.minReactionBody };
+  return { body, closePos, aligned, closeStrong, valid: aligned && closeStrong && body >= minBody };
 }
 
-function createZones(candles, st) {
+function createZones(candles, st, cfg = CONFIG) {
   const zones = [];
-  for (let i = CONFIG.pivotStrength; i < candles.length - CONFIG.pivotStrength; i++) {
+  for (let i = cfg.pivotStrength; i < candles.length - cfg.pivotStrength; i++) {
     const trend = st.trend[i];
     if (!trend) continue;
-    const pivotHigh = isPivotHigh(candles, i, CONFIG.pivotStrength);
-    const pivotLow = isPivotLow(candles, i, CONFIG.pivotStrength);
+    const pivotHigh = isPivotHigh(candles, i, cfg.pivotStrength);
+    const pivotLow = isPivotLow(candles, i, cfg.pivotStrength);
     if (!pivotHigh && !pivotLow) continue;
 
     // The zone is anchored to the pivot candle and the first displacement candle after it.
@@ -134,7 +148,7 @@ function createZones(candles, st) {
 
     const vp = directionalVolume(candles, Math.max(0, i - 4), displacement);
     const strength = dir === 'BUY' ? vp.buyPercent : vp.sellPercent;
-    if (strength < CONFIG.minVolumePercent) continue;
+    if (strength < cfg.minVolumePercent) continue;
 
     const zone = {
       id: `OB-${candles[i].time}-${dir}`,
@@ -159,19 +173,19 @@ function createZones(candles, st) {
       zones.splice(idx, 1);
     }
     zones.push(zone);
-    while (zones.length > CONFIG.maxZones) zones.shift();
+    while (zones.length > cfg.maxZones) zones.shift();
   }
   return zones;
 }
 
-function processRetests(candles, zones) {
+function processRetests(candles, zones, cfg = CONFIG) {
   const signals = [];
   const working = zones.map(z => ({ ...z }));
   for (const z of working) {
     let createdIndex = candles.findIndex(c => c.time === z.createdTime);
     if (createdIndex < 0) createdIndex = candles.findIndex(c => c.time === z.pivotTime);
     if (createdIndex < 0) continue;
-    const max = Math.min(candles.length - 1, createdIndex + CONFIG.maxRetestBars);
+    const max = Math.min(candles.length - 1, createdIndex + cfg.maxRetestBars);
 
     for (let i = createdIndex + 1; i <= max; i++) {
       const c = candles[i];
@@ -184,7 +198,7 @@ function processRetests(candles, zones) {
       if (z.direction === 'BUY' && c.close < z.bottom) { z.broken = true; break; }
       if (z.direction === 'SELL' && c.close > z.top) { z.broken = true; break; }
 
-      const reaction = reactionQuality(c, z.direction);
+      const reaction = reactionQuality(c, z.direction, cfg.minReactionBody);
       if (!reaction.valid) continue;
 
       z.retested = true;
@@ -206,7 +220,7 @@ function processRetests(candles, zones) {
   return { zones: working, signals };
 }
 
-function makeTradePlan(signal, candles) {
+function makeTradePlan(signal, candles, cfg = CONFIG) {
   if (!signal) return null;
   const i = candles.findIndex(c => c.time === signal.time);
   const c = i >= 0 ? candles[i] : null;
@@ -217,20 +231,21 @@ function makeTradePlan(signal, candles) {
   // Entry = close of the candle that creates/confirms the OB.
   // SL = the far edge of the OB box: BUY uses box bottom, SELL uses box top.
   const stopLoss = signal.direction === 'BUY' ? zone.bottom : zone.top;
-  const tps = CONFIG.rr.map(r => Number((signal.direction === 'BUY' ? entry + safeRisk*r : entry - safeRisk*r).toFixed(3)));
+  const tps = cfg.rr.map(r => Number((signal.direction === 'BUY' ? entry + safeRisk*r : entry - safeRisk*r).toFixed(3)));
   return { entry:Number(entry.toFixed(3)), stopLoss:Number(stopLoss.toFixed(3)), tp1:tps[0], tp2:tps[1], tp3:tps[2], tp4:tps[3], risk:Number(safeRisk.toFixed(3)), rr:'1:1 / 1:2 / 1:3 / 1:4', entryRule:'ORDER_BLOCK_CREATED_ENTRY', stopRule:'OB_BOX_EDGE' };
 }
 
-function buildAnalysis(candles) {
+function buildAnalysis(candles, options = {}) {
   if (!Array.isArray(candles) || candles.length < 40) return null;
+  const cfg = strategyConfig(options.interval);
 
-  const st = supertrend(candles, 10, CONFIG.supertrendMultiplier);
-  const zones = createZones(candles, st);
-  const processed = processRetests(candles, zones);
+  const st = supertrend(candles, 10, cfg.supertrendMultiplier);
+  const zones = createZones(candles, st, cfg);
+  const processed = processRetests(candles, zones, cfg);
 
-  // The TradingView workflow treats the appearance of a valid OB box as
-  // the actionable signal event. Retest information remains available as
-  // metadata, but a retest is no longer required to create the signal.
+  // 1M preserves the existing OB-creation signal behavior.
+  // 5M/15M only become actionable after the price returns into the box
+  // and a closed candle confirms the reaction.
   const boxSignals = processed.zones.map(z => ({
     time: z.createdTime,
     direction: z.direction,
@@ -242,8 +257,9 @@ function buildAnalysis(candles) {
     confirmation: 'ORDER_BLOCK_CREATED'
   })).filter(s => Number.isFinite(Number(s.time)));
 
+  const signals = cfg.requireRetest ? processed.signals : boxSignals;
   const latestTime = candles.at(-1)?.time;
-  const latestSignal = boxSignals
+  const latestSignal = signals
     .filter(s => Number(s.time) === Number(latestTime))
     .at(-1) || null;
 
@@ -262,15 +278,17 @@ function buildAnalysis(candles) {
   return {
     st,
     zones: activeZones,
-    signals: boxSignals,
+    signals,
+    boxSignals,
     retestSignals: processed.signals,
     latestSignal,
     confidence
   };
 }
 
-export function analyze(candles = []) {
-  const result = buildAnalysis(candles);
+export function analyze(candles = [], options = {}) {
+  const cfg = strategyConfig(options.interval);
+  const result = buildAnalysis(candles, options);
   const latest = candles.at(-1);
   if (!result || !latest) {
     return {
@@ -302,15 +320,15 @@ export function analyze(candles = []) {
   };
 
   const swings = {
-    highs: candles.map((c,i)=>isPivotHigh(candles,i,CONFIG.pivotStrength)?{time:c.time,price:c.high}:null).filter(Boolean),
-    lows: candles.map((c,i)=>isPivotLow(candles,i,CONFIG.pivotStrength)?{time:c.time,price:c.low}:null).filter(Boolean)
+    highs: candles.map((c,i)=>isPivotHigh(candles,i,cfg.pivotStrength)?{time:c.time,price:c.high}:null).filter(Boolean),
+    lows: candles.map((c,i)=>isPivotLow(candles,i,cfg.pivotStrength)?{time:c.time,price:c.low}:null).filter(Boolean)
   };
 
   return {
     swings, liquidityLevels:[], sweeps:[], zones:result.zones,
     volumeOB:{zones:result.zones,activeZone:latestZone,signals:result.signals,retestSignals:result.retestSignals||[]},
     signal,
-    tradePlan:makeTradePlan(latestSignal,candles),
+    tradePlan:makeTradePlan(latestSignal,candles,cfg),
     structureDirection:latestTrend,
     diagnostics:{
       atr:result.st.atr.at(-1),
@@ -318,15 +336,15 @@ export function analyze(candles = []) {
       latestSwingHigh:swings.highs.at(-1)?.price??null,
       latestSwingLow:swings.lows.at(-1)?.price??null,
       latestSweep:null,
-      confirmation:latestSignal?'ORDER_BLOCK_CREATED':'WAITING_FOR_ORDER_BLOCK',
+      confirmation:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION':'ORDER_BLOCK_CREATED'):'WAITING_FOR_ORDER_BLOCK',
       volumeAvailable:candles.some(c=>n(c.volume,0)>0),
-      volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= CONFIG.minVolumePercent : false,
+      volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= cfg.minVolumePercent : false,
       riskFilter:{passed:!!latestSignal,rejected:false,reason:latestSignal?null:'WAIT'},
-      entryRule:latestSignal?'ORDER_BLOCK_CREATION_CLOSE':null,
+      entryRule:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION_CLOSE':'ORDER_BLOCK_CREATION_CLOSE'):null,
       entryTime:latestSignal?.time??null,
       bigMoveScore:0,
       rejection:signal.rejection,
-      logic:'VOLUME_OB_CREATION_SIGNAL'
+      logic:cfg.requireRetest?'VOLUME_OB_RETEST_REACTION':'VOLUME_OB_CREATION_SIGNAL'
     }
   };
 }
@@ -438,11 +456,12 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
   };
 }
 
-export function buildHistory(candles = []) {
-  const result = buildAnalysis(candles);
+export function buildHistory(candles = [], options = {}) {
+  const cfg = strategyConfig(options.interval);
+  const result = buildAnalysis(candles, options);
   if (!result) return [];
   return result.signals.slice(-200).map((s, index) => {
-    const plan = makeTradePlan(s,candles);
+    const plan = makeTradePlan(s,candles,cfg);
     const base = {
       id:`hist-${s.time}-${s.direction}-${index}`,
       interval:null,
@@ -455,7 +474,7 @@ export function buildHistory(candles = []) {
       risk:plan?.risk??null,realizedR:0,
       tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],
       result:'OPEN',status:'OPEN',exit:null,exitTime:null,reason:'Waiting for TP4 or SL',
-      entryRule:'ORDER_BLOCK_CREATION_CLOSE',zoneId:s.zoneId
+      entryRule:cfg.requireRetest?'BOX_RETEST_REACTION_CLOSE':'ORDER_BLOCK_CREATION_CLOSE',zoneId:s.zoneId
     };
     const startIndex = candles.findIndex(c => Number(c.time) === Number(s.time));
     return resolveHistoricalTrade(base, candles, startIndex);
