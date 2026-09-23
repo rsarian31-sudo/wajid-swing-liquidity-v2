@@ -75,31 +75,70 @@ async function runInterval(interval, env) {
   bucket.activeTrades = stillActive;
   bucket.active = stillActive[0] || null;
 
-  const signal = analysis.signal;
-  const plan = analysis.tradePlan;
-  const signalId = signal?.direction && signal.direction !== 'WAIT' && signal.time ? `${interval}:${signal.time}:${signal.direction}` : null;
+  // Catch up any signals created since the previous scheduler tick.
+  // This prevents a delayed/skipped cron invocation from permanently losing a signal.
+  const previousCandleTime = Number(bucket.lastCandleTime || 0);
+  const historicalSignals = buildHistory(candles)
+    .filter(t => t && t.signalTime && t.direction && t.direction !== 'WAIT')
+    .filter(t => previousCandleTime ? Number(t.signalTime) > previousCandleTime : false)
+    .slice(-20);
 
-  if (signalId && bucket.lastSignalId !== signalId && plan) {
-    // One market move should not create duplicate 5M/15M trades.
+  const candidates = [...historicalSignals];
+  if (analysis.signal?.direction && analysis.signal.direction !== 'WAIT' && analysis.signal.time) {
+    candidates.push({
+      signalTime: analysis.signal.time, direction: analysis.signal.direction,
+      entry: analysis.tradePlan?.entry, stopLoss: analysis.tradePlan?.stopLoss,
+      tp1: analysis.tradePlan?.tp1, tp2: analysis.tradePlan?.tp2, tp3: analysis.tradePlan?.tp3, tp4: analysis.tradePlan?.tp4,
+      risk: analysis.tradePlan?.risk, probability: analysis.signal.probability, score: analysis.signal.score
+    });
+  }
+
+  const uniqueCandidates = [];
+  const seenCandidateIds = new Set();
+  for (const candidate of candidates.sort((a,b) => Number(a.signalTime)-Number(b.signalTime))) {
+    const signalId = `${interval}:${candidate.signalTime}:${candidate.direction}`;
+    if (seenCandidateIds.has(signalId) || bucket.lastSignalId === signalId) continue;
+    seenCandidateIds.add(signalId);
+    uniqueCandidates.push({ candidate, signalId });
+  }
+
+  for (const { candidate, signalId } of uniqueCandidates) {
+    const signal = {
+      direction: candidate.direction, time: Number(candidate.signalTime), entryTime: Number(candidate.signalTime),
+      price: Number(candidate.entry ?? candidate.price ?? 0),
+      probability: Number(candidate.probability ?? analysis.signal?.probability ?? 0),
+      score: Number(candidate.score ?? analysis.signal?.score ?? 0),
+      confirmation: { time: Number(candidate.confirmationTime ?? candidate.signalTime), price: Number(candidate.entry ?? candidate.price ?? 0) },
+      sweep: null
+    };
+    const plan = candidate.entry != null
+      ? { entry:candidate.entry, stopLoss:candidate.stopLoss, tp1:candidate.tp1, tp2:candidate.tp2, tp3:candidate.tp3, tp4:candidate.tp4, risk:candidate.risk }
+      : analysis.tradePlan;
+    if (!plan) continue;
+
     if (isCrossTimeframeDuplicate(current, interval, signal)) {
       bucket.lastSignalId = signalId;
       bucket.lastDuplicate = { time: signal.time, direction: signal.direction, price: signal.price, reason: 'CROSS_TIMEFRAME_DUPLICATE' };
-    } else {
-      let active = makeActiveTrade(interval, signal, plan, analysis, news);
-      bucket.lastSignalId = signalId;
-      const telegramResult = await sendTelegram(env, { type: 'SIGNAL', interval, trade: active, probability: signal.probability, score: signal.score }, telegram.subscribers);
-      if (telegramResult?.messageIds) active = { ...active, telegramMessageIds: telegramResult.messageIds };
-      bucket.activeTrades = [...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []), active];
-      bucket.active = bucket.activeTrades[0] || active;
-
-      const events = advanceActiveTrade(active, candles);
-      for (const event of events.notifications) await sendTelegram(env, event, telegram.subscribers);
-      if (events.closed) { bucket.trades.push(events.closed); bucket.trades = bucket.trades.slice(-200); bucket.activeTrades = bucket.activeTrades.filter(t => t.id !== active.id); }
-      else bucket.activeTrades = bucket.activeTrades.map(t => t.id === active.id ? events.active : t);
-      bucket.active = bucket.activeTrades[0] || null;
+      continue;
     }
-  }
 
+    let active = makeActiveTrade(interval, signal, plan, analysis, news);
+    bucket.lastSignalId = signalId;
+    const telegramResult = await sendTelegram(env, { type:'SIGNAL', interval, trade:active, probability:signal.probability, score:signal.score }, telegram.subscribers);
+    if (telegramResult?.messageIds) active = { ...active, telegramMessageIds: telegramResult.messageIds };
+    bucket.activeTrades = [...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []), active];
+    bucket.active = bucket.activeTrades[0] || active;
+
+    const events = advanceActiveTrade(active, candles);
+    for (const event of events.notifications) await sendTelegram(env, event, telegram.subscribers);
+    if (events.closed) {
+      bucket.trades.push(events.closed); bucket.trades = bucket.trades.slice(-200);
+      bucket.activeTrades = bucket.activeTrades.filter(t => t.id !== active.id);
+    } else {
+      bucket.activeTrades = bucket.activeTrades.map(t => t.id === active.id ? events.active : t);
+    }
+    bucket.active = bucket.activeTrades[0] || null;
+  }
   bucket.lastCandleTime = candles.at(-1)?.time ?? null;
   current.intervals[interval] = bucket;
   current.telegram = telegram;
@@ -168,6 +207,6 @@ function closeTrade(trade,result,realizedR,exit,exitTime,reason){
 }
 async function getState(stub){const response=await stub.fetch('https://state/');return response.json()}
 async function putState(stub,state){await stub.fetch('https://state/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)})}
-async function sendTelegram(env,event,subscribers){if(!env.TELEGRAM_BOT_TOKEN)return false;const activeSubscribers=(subscribers||[]).filter(s=>s.active===true&&String(s.chatId));if(!activeSubscribers.length)return false;const trade=event.trade,tf=event.interval==='1min'?'1M':event.interval==='5min'?'5M':'15M';let text;if(event.type==='SIGNAL'){const nb=trade.news?.bias||'NEUTRAL',ni=trade.news?.highImpactRecent?'⚠️ HIGH-IMPACT NEWS':'📰 News: '+nb;text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1}`,`2️⃣ TP2: ${trade.tp2} (WIN)`,`3️⃣ TP3: ${trade.tp3}`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\n')}else if(event.type==='TP1')text=`🟡 WAJID \${tf} · XAU/USD\n\nTP1 REACHED · +1R milestone\nEntry: \${trade.entry}\nTP1: \${trade.tp1}\nStatus: monitoring TP2–TP4`;else if(event.type==='TP2')text=`🟠 WAJID \${tf} · XAU/USD\n\nTP2 REACHED · +2R milestone\nEntry: \${trade.entry}\nTP2: \${trade.tp2}\nStatus: monitoring TP3–TP4`;else if(event.type==='TP3')text=`🏆 WAJID \${tf} · XAU/USD\n\n✅ WIN · TP3 reached\nEntry: \${trade.entry}\nTP3: \${trade.tp3}\nResult: TP3 WIN · monitoring TP4`;else if(event.type==='TP4')text=`🏆🔥 WAJID \${tf} · XAU/USD\n\n✅ FULL TP HIT · TP4 reached\nEntry: \${trade.entry}\nTP4: \${trade.tp4}\nResult: FULL TP HIT`;else if(event.type==='LOSS')text=`🔴 WAJID \${tf} · XAU/USD\n\n❌ LOSS · SL reached\nEntry: \${trade.entry}\nSL: \${trade.stopLoss}\nResult: -1R`;else return false;const messageIds={};for(const subscriber of activeSubscribers){const payload={chat_id:subscriber.chatId,text,reply_markup:telegramKeyboard()},original=trade.telegramMessageIds?.[String(subscriber.chatId)];if(event.type!=='SIGNAL'&&Number.isFinite(Number(original)))payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});if(!response.ok)continue;const data=await response.json();if(data?.ok&&data?.result?.message_id)messageIds[String(subscriber.chatId)]=data.result.message_id}catch(_){} }return event.type==='SIGNAL'?{messageIds}:true}
+async function sendTelegram(env,event,subscribers){if(!env.TELEGRAM_BOT_TOKEN)return false;const activeSubscribers=(subscribers||[]).filter(s=>s.active===true&&String(s.chatId));if(!activeSubscribers.length)return false;const trade=event.trade,tf=event.interval==='1min'?'1M':event.interval==='5min'?'5M':'15M';let text;if(event.type==='SIGNAL'){const nb=trade.news?.bias||'NEUTRAL',ni=trade.news?.highImpactRecent?'⚠️ HIGH-IMPACT NEWS':'📰 News: '+nb;text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1}`,`2️⃣ TP2: ${trade.tp2} (WIN)`,`3️⃣ TP3: ${trade.tp3}`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\n')}else if(event.type==='TP1')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP1 REACHED · +1R milestone\nEntry: ${trade.entry}\nTP1: ${trade.tp1}\nStatus: monitoring TP2–TP4`;else if(event.type==='TP2')text=`🟠 WAJID ${tf} · XAU/USD\n\nTP2 REACHED · +2R milestone\nEntry: ${trade.entry}\nTP2: ${trade.tp2}\nStatus: monitoring TP3–TP4`;else if(event.type==='TP3')text=`🏆 WAJID ${tf} · XAU/USD\n\n✅ WIN · TP3 reached\nEntry: ${trade.entry}\nTP3: ${trade.tp3}\nResult: TP3 WIN · monitoring TP4`;else if(event.type==='TP4')text=`🏆🔥 WAJID ${tf} · XAU/USD\n\n✅ FULL TP HIT · TP4 reached\nEntry: ${trade.entry}\nTP4: ${trade.tp4}\nResult: FULL TP HIT`;else if(event.type==='LOSS')text=`🔴 WAJID ${tf} · XAU/USD\n\n❌ LOSS · SL reached\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: -1R`;else return false;const messageIds={};for(const subscriber of activeSubscribers){const payload={chat_id:subscriber.chatId,text,reply_markup:telegramKeyboard()},original=trade.telegramMessageIds?.[String(subscriber.chatId)];if(event.type!=='SIGNAL'&&Number.isFinite(Number(original)))payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};for(let attempt=0;attempt<2;attempt++){try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});const data=await response.json().catch(()=>null);if(response.ok&&data?.ok&&data?.result?.message_id){messageIds[String(subscriber.chatId)]=data.result.message_id;break}}catch(_){} } }return event.type==='SIGNAL'?{messageIds}:true}
 async function telegramMessage(env,chatId,text){await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:chatId,text,reply_markup:telegramKeyboard()})})}
 export { WajidTradeState };
