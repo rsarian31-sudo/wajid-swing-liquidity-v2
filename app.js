@@ -86,7 +86,7 @@ function renderSummary(summary) {
   $('perfRate').textContent = `${summary.winRate ?? 0}%`; $('perfR').textContent = `${fmt(summary.totalR)}R`;
 }
 function renderTradeRows(trades) {
-  const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0)).slice(0,50);
+  const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
   $('history').innerHTML = rows.length ? rows.map((t) => {
     const rc = resultClass(t.result), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
     return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
