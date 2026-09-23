@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let interval = '15min';
+let interval = '5min';
 let loading = false;
 let historyView = 'all';
 let historyData = null;
@@ -42,8 +42,8 @@ const obSplitSeries = chart.addLineSeries({ color: '#d7d7d7', lineWidth: 1, line
 const fmt = (x) => Number.isFinite(Number(x)) ? Number(x).toFixed(2) : '—';
 const time = (x) => x ? new Date(Number(x) * 1000).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
-const tfLabel = () => interval === '1min' ? '1M' : interval === '5min' ? '5M' : '15M';
-const tfLong = () => interval === '1min' ? '1 Minute' : interval === '5min' ? '5 Minutes' : '15 Minutes';
+const tfLabel = () => interval === '1min' ? '1M' : '5M';
+const tfLong = () => interval === '1min' ? '1 Minute' : '5 Minutes';
 
 function setFlat(series, data, value) {
   const numericValue = Number(value);
