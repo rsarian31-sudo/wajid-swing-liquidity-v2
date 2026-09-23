@@ -3,7 +3,7 @@ export function onRequest() {
     ok: true,
     service: 'wajid-swing-liquidity-v2',
     symbol: 'XAU/USD',
-    intervals: ['5min', '15min']
+    intervals: ['1min', '5min']
   }), {
     headers: {
       'Content-Type': 'application/json',
