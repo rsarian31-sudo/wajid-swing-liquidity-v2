@@ -48,9 +48,43 @@ export async function onRequest({request,env,waitUntil}){
     const now=Math.floor(Date.now()/1000),seconds=interval==='1min'?60:interval==='5min'?300:900;
     const closed=candles.filter(c=>c.time+seconds<=now);
     const analysis=analyze(closed);
-    const trades=buildHistory(closed).map(t=>({...t,interval}));
-    const openTrades=trades.filter(t=>t.result==='OPEN');
-    const completed=trades.filter(t=>t.result!=='OPEN');
+
+    // History is server-persisted in the Durable Object. This prevents the
+    // dashboard from being limited to the latest 300 candles.
+    let trades = [];
+    if (env.TRADE_STATE) {
+      try {
+        const id = env.TRADE_STATE.idFromName('xauusd');
+        const stub = env.TRADE_STATE.get(id);
+        const stateResponse = await stub.fetch('https://state/');
+        const state = await stateResponse.json();
+        const bucket = state?.intervals?.[interval];
+        const persisted = [
+          ...(Array.isArray(bucket?.trades) ? bucket.trades : []),
+          ...(Array.isArray(bucket?.activeTrades) ? bucket.activeTrades : []),
+          ...(bucket?.active ? [bucket.active] : [])
+        ];
+        const seen = new Set();
+        trades = persisted
+          .map(t => ({ ...t, interval: t.interval || interval }))
+          .filter(t => {
+            const key = `${t.interval}:${t.signalTime || ''}:${t.direction || ''}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          })
+          .sort((a,b) => Number(a.signalTime || 0) - Number(b.signalTime || 0));
+      } catch (_) {}
+    }
+
+    // Backward-compatible fallback: if the server has no persisted history
+    // yet, show the currently available candle history.
+    if (!trades.length) {
+      trades = buildHistory(closed).map(t => ({ ...t, interval }));
+    }
+
+    const openTrades=trades.filter(t=>t.result==='OPEN' || t.status!=='CLOSED');
+    const completed=trades.filter(t=>t.result!=='OPEN' && t.status==='CLOSED');
     const summary={totalTrades:trades.length,wins:completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT').length,losses:completed.filter(t=>t.result==='LOSS').length,open:openTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
     // Current confirmed signal is already represented in buildHistory. Reuse the
