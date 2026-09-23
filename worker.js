@@ -74,7 +74,11 @@ async function runInterval(interval, env) {
   const stillActive = [];
   for (const activeTrade of activeList) {
     const events = advanceActiveTrade(activeTrade, candles);
-    for (const event of events.notifications) await sendTelegramWithQueue(env, event, telegram);
+    for (const event of events.notifications) {
+      await sendTelegramWithQueue(env, event, telegram);
+      current.telegram = telegram;
+      await putState(state, current);
+    }
     if (events.closed) { bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades); }
     else stillActive.push(events.active);
   }
@@ -132,6 +136,8 @@ async function runInterval(interval, env) {
     bucket.lastSignalId = signalId;
     const telegramResult = await sendTelegramWithQueue(env, { type:'SIGNAL', interval, trade:active, probability:signal.probability, score:signal.score }, telegram);
     if (telegramResult?.messageIds) active = { ...active, telegramMessageIds: telegramResult.messageIds };
+    current.telegram = telegram;
+    await putState(state, current);
     bucket.activeTrades = [...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []), active];
     bucket.active = bucket.activeTrades[0] || active;
     current.intervals[interval] = bucket;
@@ -278,7 +284,9 @@ async function retryPendingTelegram(env,telegram){
   for(const item of telegram.pending.slice(0,100)){
     if(!item?.event || !item?.chatId) continue;
     if(Number(item.nextAttemptAt||0)>now){remaining.push(item);continue;}
-    const result=await sendTelegram(env,item.event,[{chatId:String(item.chatId),active:true}]);
+    const subscriber=telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
+    if(!subscriber || subscriber.active!==true) continue;
+    const result=await sendTelegram(env,item.event,[subscriber]);
     if((result?.failedChatIds||[]).includes(String(item.chatId))){
       item.attempts=Number(item.attempts||0)+1;
       item.nextAttemptAt=now+Math.min(15*60*1000,Math.max(60*1000,2**Math.min(item.attempts,4)*1000));
