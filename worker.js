@@ -26,7 +26,13 @@ export default {
     // Cron is the outgoing Telegram signal engine.
     if (!env.TELEGRAM_BOT_TOKEN || !env.TRADE_STATE) return;
     await ensureTelegramWebhook(env);
-    for (const interval of ['1min', '5min', '15min']) {
+    const minute = new Date().getUTCMinutes();
+    // Only poll higher timeframes when a new candle can actually close.
+    // This reduces unnecessary market-data requests without changing signal logic.
+    const intervals = ['1min'];
+    if (minute % 5 === 0) intervals.push('5min');
+    if (minute % 15 === 0) intervals.push('15min');
+    for (const interval of intervals) {
       try {
         await runInterval(interval, env);
       } catch (error) {
