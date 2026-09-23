@@ -47,7 +47,7 @@ export async function onRequest({request,env,waitUntil}){
     if(!candles?.length)throw Error('All XAU/USD market feeds are unavailable');
     const now=Math.floor(Date.now()/1000),seconds=interval==='1min'?60:interval==='5min'?300:900;
     const closed=candles.filter(c=>c.time+seconds<=now);
-    const analysis=analyze(closed);
+    const analysis=analyze(closed,{interval});
 
     // History is server-persisted in the Durable Object. This prevents the
     // dashboard from being limited to the latest 300 candles.
@@ -80,7 +80,7 @@ export async function onRequest({request,env,waitUntil}){
     // Backward-compatible fallback: if the server has no persisted history
     // yet, show the currently available candle history.
     if (!trades.length) {
-      trades = buildHistory(closed).map(t => ({ ...t, interval }));
+      trades = buildHistory(closed,{interval}).map(t => ({ ...t, interval }));
     }
 
     const openTrades=trades.filter(t=>t.result==='OPEN' || t.status!=='CLOSED');
@@ -92,7 +92,7 @@ export async function onRequest({request,env,waitUntil}){
     const activeTrades=openTrades;
     const active=activeTrades[0]||null;
     const activePlan=active?{entry:active.entry,stopLoss:active.stopLoss,tp1:active.tp1,tp2:active.tp2,tp3:active.tp3,tp4:active.tp4,risk:active.risk,entryRule:active.entryRule}:null;
-    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:CONFIG},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:analysis.diagnostics,news:null,volumeOB:analysis.volumeOB,history:{summary,trades}});
+    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:{...CONFIG,intervalConfig:interval==='1min'?{requireRetest:false,minReactionBody:CONFIG.minReactionBody,minVolumePercent:CONFIG.minVolumePercent}:interval==='5min'?{requireRetest:true,minReactionBody:0.45,minVolumePercent:58}:{requireRetest:true,minReactionBody:0.55,minVolumePercent:62}}},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:analysis.diagnostics,news:null,volumeOB:analysis.volumeOB,history:{summary,trades}});
   }catch(e){return json({success:false,error:e?.message||'Market data error'},500)}
 }
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'}})}
