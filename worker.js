@@ -145,7 +145,11 @@ async function runInterval(interval, env) {
     await putState(state, current);
 
     const events = advanceActiveTrade(active, candles);
-    for (const event of events.notifications) await sendTelegramWithQueue(env, event, telegram);
+    for (const event of events.notifications) {
+      await sendTelegramWithQueue(env, event, telegram);
+      current.telegram = telegram;
+      await putState(state, current);
+    }
     if (events.closed) {
       bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades);
       bucket.activeTrades = bucket.activeTrades.filter(t => t.id !== active.id);
