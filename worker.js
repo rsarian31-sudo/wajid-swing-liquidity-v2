@@ -34,10 +34,35 @@ export default {
     const intervals = ['1min'];
     if (minute % 5 === 0) intervals.push('5min');
         for (const interval of intervals) {
+      const id = env.TRADE_STATE.idFromName('xauusd');
+      const stateStub = env.TRADE_STATE.get(id);
+      const lockOwner = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+      const lockKey = 'scheduler:' + interval;
+      let locked = false;
       try {
+        const lockResponse = await stateStub.fetch('https://state/lock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: lockKey, owner: lockOwner, ttl: 90000 })
+        });
+        locked = lockResponse.ok;
+        if (!locked) {
+          console.log('skipping overlapping scheduler run', interval);
+          continue;
+        }
         await runInterval(interval, env);
       } catch (error) {
         console.error('scheduled signal error', interval, error?.message || error);
+      } finally {
+        if (locked) {
+          try {
+            await stateStub.fetch('https://state/unlock', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: lockKey, owner: lockOwner })
+            });
+          } catch (_) {}
+        }
       }
     }
   }
@@ -106,7 +131,17 @@ async function runInterval(interval, env) {
     bucket.trades = mergeTrades(bucket.trades, discoveredHistory);
   }
 
-  const activeList = Array.isArray(bucket.activeTrades) ? bucket.activeTrades : (bucket.active ? [bucket.active] : []);
+  const rawActiveList = Array.isArray(bucket.activeTrades) ? bucket.activeTrades : (bucket.active ? [bucket.active] : []);
+  // Collapse duplicate active trade IDs before processing so one candle can only emit one result.
+  const activeMap = new Map();
+  for (const trade of rawActiveList) {
+    if (!trade?.id) continue;
+    const previous = activeMap.get(trade.id);
+    if (!previous || Number(trade.lastProcessedTime || 0) >= Number(previous.lastProcessedTime || 0)) {
+      activeMap.set(trade.id, trade);
+    }
+  }
+  const activeList = [...activeMap.values()];
   const stillActive = [];
   for (const activeTrade of activeList) {
     const events = advanceActiveTrade(activeTrade, candles);
