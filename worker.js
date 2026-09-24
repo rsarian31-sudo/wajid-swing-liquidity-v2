@@ -361,7 +361,12 @@ function enqueuePendingTelegram(telegram, event, chatId){
 }
 
 async function sendTelegramWithQueue(env,event,telegram){
-  const result=await sendTelegram(env,event,telegram?.subscribers||[]);
+  const active=(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
+  const result=await sendTelegram(env,event,active);
+  if(result===false){
+    for(const subscriber of active) enqueuePendingTelegram(telegram,event,String(subscriber.chatId));
+    return {messageIds:{},failedChatIds:active.map(s=>String(s.chatId)),ok:false,reason:'TELEGRAM_SEND_UNAVAILABLE'};
+  }
   for(const chatId of (result?.failedChatIds||[])) enqueuePendingTelegram(telegram,event,chatId);
   return result;
 }
@@ -376,7 +381,7 @@ async function retryPendingTelegram(env,telegram){
     const subscriber=telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
     if(!subscriber || subscriber.active!==true) continue;
     const result=await sendTelegram(env,item.event,[subscriber]);
-    if((result?.failedChatIds||[]).includes(String(item.chatId))){
+    if(result===false || (result?.failedChatIds||[]).includes(String(item.chatId))){
       item.attempts=Number(item.attempts||0)+1;
       item.nextAttemptAt=now+Math.min(15*60*1000,Math.max(60*1000,2**Math.min(item.attempts,4)*1000));
       remaining.push(item);
