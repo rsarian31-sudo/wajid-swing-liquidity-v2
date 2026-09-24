@@ -100,13 +100,13 @@ function renderDailyHistory(trades) {
   $('historyView').innerHTML = keys.map(key => {
     const stats = calcStats(groups.get(key));
     const dayR = Number(stats.totalR || 0);
-    const dayRLabel = \`${dayR > 0 ? '+' : ''}${fmt(dayR)}R\`;
+    const dayRLabel = `${dayR > 0 ? '+' : ''}${fmt(dayR)}R`;
     const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
       const r = Number(t.realizedR || 0);
-      const rLabel = \`${r > 0 ? '+' : ''}${fmt(r)}R\`;
-      return \`<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t.result)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>\`;
+      const rLabel = `${r > 0 ? '+' : ''}${fmt(r)}R`;
+      return `<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t.result)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
     }).join('');
-    return \`<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>\`;
+    return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>`;
   }).join('');
 }
 function renderWeeklyHistory(trades) {
