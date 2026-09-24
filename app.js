@@ -99,8 +99,14 @@ function renderDailyHistory(trades) {
   if (!keys.length) { $('historyView').innerHTML = '<div class="empty-history">No daily history available yet.</div>'; return; }
   $('historyView').innerHTML = keys.map(key => {
     const stats = calcStats(groups.get(key));
-    const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => `<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t.result)}">${esc(t.result)}</strong><span>${Number(t.realizedR||0) > 0 ? '+' : ''}${fmt(t.realizedR)}R</span></div>`).join('');
-    return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L</small></div><div class="day-rate">${stats.winRate}% Win Rate</div></div><div class="daily-trades">${tradesHtml}</div></section>`;
+    const dayR = Number(stats.totalR || 0);
+    const dayRLabel = \`${dayR > 0 ? '+' : ''}${fmt(dayR)}R\`;
+    const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
+      const r = Number(t.realizedR || 0);
+      const rLabel = \`${r > 0 ? '+' : ''}${fmt(r)}R\`;
+      return \`<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t.result)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>\`;
+    }).join('');
+    return \`<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>\`;
   }).join('');
 }
 function renderWeeklyHistory(trades) {
@@ -109,7 +115,7 @@ function renderWeeklyHistory(trades) {
   const keys = [...groups.keys()].sort((a,b)=>b.localeCompare(a));
   const html = `<div class="market-schedule">Market schedule: <b>Monday–Friday</b> · Saturday &amp; Sunday: <b>CLOSED</b></div>` + (keys.length ? keys.map(key => {
     const s = calcStats(groups.get(key));
-    return `<section class="week-card"><div class="week-head"><div><b>Week of ${esc(formatWeekLabel(key))}</b><small>Monday-start reporting period</small></div><strong>${s.winRate}% Win Rate</strong></div><div class="week-grid"><div><span>Signals</span><b>${s.signals}</b></div><div><span>Wins</span><b class="win">${s.wins}</b></div><div><span>Losses</span><b class="loss">${s.losses}</b></div><div><span>Open</span><b class="open">${s.open}</b></div><div><span>Total R</span><b>${fmt(s.totalR)}R</b></div></div></section>`;
+    return `<section class="week-card"><div class="week-head"><div><b>Week of ${esc(formatWeekLabel(key))}</b><small>Monday-start reporting period</small></div><div><strong>${s.winRate}% Win Rate</strong><div class="week-r ${s.totalR >= 0 ? 'win' : 'loss'}">${s.totalR > 0 ? '+' : ''}${fmt(s.totalR)}R Total</div></div></div><div class="week-grid"><div><span>Signals</span><b>${s.signals}</b></div><div><span>Wins</span><b class="win">${s.wins}</b></div><div><span>Losses</span><b class="loss">${s.losses}</b></div><div><span>Open</span><b class="open">${s.open}</b></div><div><span>Total R</span><b>${s.totalR > 0 ? '+' : ''}${fmt(s.totalR)}R</b></div></div></section>`;
   }).join('') : '<div class="empty-history">No weekly history available yet.</div>');
   $('historyView').innerHTML = html;
 }
