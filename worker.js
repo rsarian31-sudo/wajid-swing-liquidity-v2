@@ -17,6 +17,8 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
+    if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
+    if (url.pathname === '/telegram/admin' && request.method === 'GET') return telegramAdminPage();
     if (url.pathname === '/api/data') return dataRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     if (url.pathname === '/api/health') return healthRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     return env.ASSETS.fetch(request);
@@ -40,6 +42,35 @@ export default {
     }
   }
 };
+
+async function telegramUsers(request, env) {
+  const configured = String(env.ADMIN_TOKEN || '').trim();
+  if (!configured) return Response.json({ error: 'ADMIN_TOKEN is not configured' }, { status: 503 });
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!token || token !== configured) return Response.json({ error: 'Unauthorized' }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+  const id = env.TRADE_STATE.idFromName('xauusd');
+  const state = await getState(env.TRADE_STATE.get(id));
+  const subscribers = Array.isArray(state?.telegram?.subscribers) ? state.telegram.subscribers : [];
+  const users = subscribers.map(s => ({
+    chatId: String(s.chatId || ''),
+    username: s.username || null,
+    firstName: s.firstName || null,
+    active: s.active === true,
+    updatedAt: Number(s.updatedAt || 0)
+  })).filter(s => s.chatId).sort((a,b) => b.updatedAt - a.updatedAt);
+  return Response.json({
+    total: users.length,
+    active: users.filter(u => u.active).length,
+    inactive: users.filter(u => !u.active).length,
+    users
+  }, { headers: { 'Cache-Control': 'no-store' } });
+}
+
+function telegramAdminPage() {
+  const html = '<!doctype html><html><head><meta name="viewport" content="width=device-width,initial-scale=1"><title>Telegram Users Admin</title><style>body{font-family:system-ui;background:#07101c;color:#eef;padding:20px;max-width:900px;margin:auto}button{padding:12px;border-radius:8px;border:1px solid #334;background:#101c2b;color:#fff}table{width:100%;border-collapse:collapse;margin-top:20px}th,td{padding:10px;border-bottom:1px solid #263548;text-align:left}.pill{padding:4px 8px;border-radius:999px;background:#17351f}.off{background:#382020}</style></head><body><h1>Telegram Users</h1><p>Protected admin view.</p><button id="load">Load users</button><div id="summary"></div><div id="out"></div><script>document.getElementById("load").onclick=async()=>{const token=prompt("Enter ADMIN_TOKEN");if(!token)return;const out=document.getElementById("out");out.textContent="Loading...";try{const r=await fetch("/api/telegram/users",{headers:{Authorization:"Bearer "+token}});const d=await r.json();if(!r.ok)throw new Error(d.error||"Request failed");document.getElementById("summary").innerHTML="<p><b>Total:</b> "+d.total+" &nbsp; <b>Active:</b> "+d.active+" &nbsp; <b>Inactive:</b> "+d.inactive+"</p>";out.innerHTML="<table><thead><tr><th>Username</th><th>Name</th><th>Chat ID</th><th>Status</th><th>Updated</th></tr></thead><tbody>"+d.users.map(u=>"<tr><td>"+(u.username?"@"+u.username:"—")+"</td><td>"+(u.firstName||"—")+"</td><td>"+u.chatId+"</td><td><span class=\"pill "+(u.active?"":"off")+"\">"+(u.active?"ACTIVE":"OFF")+"</span></td><td>"+(u.updatedAt?new Date(u.updatedAt).toLocaleString():"—")+"</td></tr>").join("")+"</tbody></table>"}catch(e){out.textContent=e.message}};</script></body></html>';
+  return new Response(html, { headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
+}
 
 async function runInterval(interval, env) {
   if (!env.TRADE_STATE) return;
