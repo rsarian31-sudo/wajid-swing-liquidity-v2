@@ -1,12 +1,32 @@
 import { DurableObject } from 'cloudflare:workers';
 const RESET_VERSION='volume-ob-creation-v2';
-const EMPTY=()=>({version:3,ruleVersion:RESET_VERSION,intervals:{'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION}},telegram:{offset:0,subscribers:[],pending:[]},schedulerLocks:{}});
+const TRADING_RESET_VERSION='fresh-account-20260925-v1';
+const freshIntervals=()=>({'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION}});
+const EMPTY=()=>({version:3,ruleVersion:RESET_VERSION,tradingResetVersion:TRADING_RESET_VERSION,intervals:{'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION}},telegram:{offset:0,subscribers:[],pending:[],sentKeys:[]},schedulerLocks:{}});
 export class WajidTradeState extends DurableObject{
   async fetch(request){
     const url=new URL(request.url);
     let state=await this.ctx.storage.get('state');
     if(!state||state.ruleVersion!==RESET_VERSION){
       state=EMPTY();
+      await this.ctx.storage.put('state',state);
+    }
+    if(state&&state.tradingResetVersion!==TRADING_RESET_VERSION){
+      const telegram=state.telegram&&typeof state.telegram==='object'?state.telegram:{};
+      state={
+        ...state,
+        version:3,
+        ruleVersion:RESET_VERSION,
+        tradingResetVersion:TRADING_RESET_VERSION,
+        intervals:freshIntervals(),
+        telegram:{
+          offset:Number.isFinite(Number(telegram.offset))?Number(telegram.offset):0,
+          subscribers:Array.isArray(telegram.subscribers)?telegram.subscribers:[],
+          pending:Array.isArray(telegram.pending)?telegram.pending:[],
+          sentKeys:Array.isArray(telegram.sentKeys)?telegram.sentKeys:[]
+        },
+        schedulerLocks:state.schedulerLocks&&typeof state.schedulerLocks==='object'?state.schedulerLocks:{}
+      };
       await this.ctx.storage.put('state',state);
     }
     if(request.method==='GET')return json(state);
