@@ -198,6 +198,12 @@ async function runInterval(interval, env, signalSessionOpen = true) {
     .filter(t => Number(t.signalTime) >= catchupSince)
     .slice(-20);
 
+  const existingTradeKeys = new Set([
+    ...(Array.isArray(bucket.trades) ? bucket.trades : []),
+    ...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []),
+    ...(bucket.active ? [bucket.active] : [])
+  ].map(t => tradeKey(t)));
+
   const candidates = [...historicalSignals];
   if (analysis.signal?.direction && analysis.signal.direction !== 'WAIT' && analysis.signal.time) {
     candidates.push({
