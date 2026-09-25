@@ -268,7 +268,65 @@ function startOfMalaysiaDay(date){const p=malaysiaParts(date);return new Date(Da
 function startOfMalaysiaWeek(date){const p=malaysiaParts(date),diff=p.weekday===0?-6:1-p.weekday;const dayStart=Date.UTC(p.year,p.month,p.day)+diff*86400000;return new Date(dayStart-MALAYSIA_OFFSET_MS)}
 function malaysiaDateLabel(date){const p=malaysiaParts(date);return [p.year,String(p.month+1).padStart(2,'0'),String(p.day).padStart(2,'0')].join('-')}
 
-async function fetchClosedCandles(interval,env){const keys=[env.TWELVE_DATA_API_KEY,env.TWELVE_DATA_API_KEY_2,env.TWELVE_DATA_API_KEY_3,env.TWELVE_DATA_API_KEY_4].map(k=>String(k||'').trim()).filter(Boolean);let lastError=null;for(const apiKey of keys){try{const params=new URLSearchParams({symbol:SYMBOL,interval,outputsize:String(CONFIG.outputSize),order:'ASC',timezone:'UTC',apikey:apiKey}),response=await fetch(DATA_URL+'?'+params),data=await response.json();if(!response.ok||data?.status==='error'||data?.code)throw new Error(data?.message||'Twelve Data request failed');const seconds=interval==='1min'?60:interval==='5min'?300:900,now=Math.floor(Date.now()/1000),candles=(data.values||[]).map(x=>({time:Math.floor(x.timestamp?Number(x.timestamp):Date.parse(String(x.datetime||''))/1000),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume||0)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));candles.sort((a,b)=>a.time-b.time);const unique=[],seen=new Set();for(const candle of candles)if(!seen.has(candle.time)){seen.add(candle.time);unique.push(candle)}const current=unique.length&&unique.at(-1).time+seconds>now?unique.at(-1):null,closed=current?unique.slice(0,-1):unique;if(closed.length<50)throw new Error('Twelve Data returned insufficient closed candles');return{closed,current}}catch(error){lastError=error}}throw lastError||new Error('No Twelve Data API key configured')}
+async function fetchClosedCandles(interval,env){
+  const keys=[env.TWELVE_DATA_API_KEY,env.TWELVE_DATA_API_KEY_2,env.TWELVE_DATA_API_KEY_3,env.TWELVE_DATA_API_KEY_4].map(k=>String(k||'').trim()).filter(Boolean);
+  let lastError=null;
+  for(const apiKey of keys){
+    try{
+      const params=new URLSearchParams({symbol:SYMBOL,interval,outputsize:String(CONFIG.outputSize),order:'ASC',timezone:'UTC',apikey:apiKey});
+      const response=await fetch(DATA_URL+'?'+params);
+      const data=await response.json().catch(()=>null);
+      if(!response.ok||data?.status==='error'||data?.code)throw new Error(data?.message||'Twelve Data request failed');
+      const seconds=interval==='1min'?60:interval==='5min'?300:900,now=Math.floor(Date.now()/1000);
+      const candles=(data.values||[]).map(x=>({time:Math.floor(x.timestamp?Number(x.timestamp):Date.parse(String(x.datetime||''))/1000),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume||0)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
+      const unique=[],seen=new Set();
+      for(const candle of candles)if(!seen.has(candle.time)){seen.add(candle.time);unique.push(candle)}
+      const current=unique.length&&unique.at(-1).time+seconds>now?unique.at(-1):null,closed=current?unique.slice(0,-1):unique;
+      if(closed.length>=50)return{closed,current,provider:'Twelve Data'};
+      throw new Error('Twelve Data returned insufficient closed candles');
+    }catch(error){lastError=error}
+  }
+
+  // Keep Telegram signal generation alive when Twelve Data is rate-limited or unavailable.
+  // These fallbacks mirror the public /api/data feed order so the site and Telegram
+  // can continue using the same free market-data sources.
+  try{
+    const yi=interval==='1min'?'1m':'5m';
+    const y=new URL('https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X');
+    y.searchParams.set('range','5d'); y.searchParams.set('interval',yi); y.searchParams.set('includePrePost','false');
+    const response=await fetch(y.toString(),{headers:{Accept:'application/json','User-Agent':'Mozilla/5.0'}});
+    const data=await response.json().catch(()=>null);
+    const q=data?.chart?.result?.[0],v=q?.indicators?.quote?.[0]||{};
+    if(q?.timestamp){
+      const candles=q.timestamp.map((ts,i)=>({time:Number(ts),open:Number(v.open?.[i]),high:Number(v.high?.[i]),low:Number(v.low?.[i]),close:Number(v.close?.[i]),volume:Number(v.volume?.[i]||0)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
+      if(candles.length>=50){
+        const seconds=interval==='1min'?60:interval==='5min'?300:900,now=Math.floor(Date.now()/1000);
+        const current=candles.at(-1).time+seconds>now?candles.at(-1):null,closed=current?candles.slice(0,-1):candles;
+        if(closed.length>=50)return{closed,current,provider:'Yahoo Finance'};
+      }
+    }
+  }catch(error){lastError=error}
+
+  try{
+    const xr=await fetch('https://xaus.com/api/v1/intraday?symbol=xau&hours=48',{headers:{Accept:'application/json'}});
+    const xd=await xr.json().catch(()=>null),points=Array.isArray(xd?.points)?xd.points:[];
+    const seconds=interval==='1min'?60:interval==='5min'?300:900,buckets=new Map();
+    for(const p of points){
+      const raw=Number(p?.t),ts=Number.isFinite(raw)?(raw>100000000000?Math.floor(raw/1000):Math.floor(raw)):Math.floor(Date.parse(String(p?.t||''))/1000),price=Number(p?.p);
+      if(!Number.isFinite(ts)||!Number.isFinite(price)||price<=0)continue;
+      const b=Math.floor(ts/seconds)*seconds,old=buckets.get(b);
+      if(!old)buckets.set(b,{time:b,open:price,high:price,low:price,close:price,volume:0});
+      else{old.high=Math.max(old.high,price);old.low=Math.min(old.low,price);old.close=price}
+    }
+    const candles=[...buckets.values()].sort((a,b)=>a.time-b.time);
+    if(candles.length>=50){
+      const now=Math.floor(Date.now()/1000),current=candles.at(-1).time+seconds>now?candles.at(-1):null,closed=current?candles.slice(0,-1):candles;
+      if(closed.length>=50)return{closed,current,provider:'XAUS'};
+    }
+  }catch(error){lastError=error}
+
+  throw lastError||new Error('No usable XAU/USD market data feed');
+}
 function makeActiveTrade(interval,signal,plan,analysis,news){return{id:interval+':'+signal.time+':'+signal.direction,interval,direction:signal.direction,signalTime:signal.entryTime||signal.time,confirmationTime:signal.confirmation?.time??signal.time,confirmationPrice:Number(signal.confirmation?.price??0),signalPrice:Number(signal.price.toFixed(2)),probability:signal.probability,score:signal.score,entry:Number(plan.entry.toFixed(2)),stopLoss:Number(plan.stopLoss.toFixed(2)),tp1:Number(plan.tp1.toFixed(2)),tp2:Number(plan.tp2.toFixed(2)),tp3:Number(plan.tp3.toFixed(2)),tp4:Number(plan.tp4.toFixed(2)),risk:Number(plan.risk.toFixed(2)),sweep:analysis.signal?.sweep||null,news:news||null,tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],realizedR:0,lastProcessedTime:Number(signal.entryTime||signal.time)-1,telegramMessageIds:{},createdAt:Date.now()}}
 function advanceActiveTrade(active,candles){
   const notifications=[],next={...active,hitTPs:Array.isArray(active.hitTPs)?[...active.hitTPs]:[]};
