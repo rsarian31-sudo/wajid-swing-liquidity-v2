@@ -73,8 +73,17 @@ export async function onRequest({request,env,waitUntil}){
     // activeTrades is the authoritative source for currently open positions.
     // Do not infer OPEN from historical records with a missing status field.
     const persistedActive=Array.isArray(bucket?.activeTrades)?bucket.activeTrades:(bucket?.active?[bucket.active]:[]);
-    const activeIds=new Set(persistedActive.filter(t=>t?.id).map(t=>String(t.id)));
-    const activeTrades=persistedActive.filter(t=>t?.id).map(t=>({...t,interval:t.interval||interval}));
+    // activeTrades is normally authoritative. If state persistence misses an
+    // active position, recover OPEN records from the same 1M trade history.
+    // This keeps the Open counter aligned with trades that are visibly still
+    // running (for example TP1/TP2/TP3 hit but TP4/SL not yet reached).
+    const activeMap=new Map();
+    for(const t of persistedActive.filter(t=>t?.id)) activeMap.set(String(t.id),{...t,interval:t.interval||interval});
+    for(const t of trades.filter(t=>t?.id&&t?.status==='OPEN')) {
+      if(!activeMap.has(String(t.id))) activeMap.set(String(t.id),{...t,interval:t.interval||interval});
+    }
+    const activeTrades=[...activeMap.values()];
+    const activeIds=new Set(activeTrades.map(t=>String(t.id)));
     const completed=trades.filter(t=>!activeIds.has(String(t.id)) && t.status==='CLOSED');
     const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT').length; const openWinMilestones=activeTrades.filter(t=>t.tp2Hit===true).length; const summary={totalTrades:trades.length,wins:completedWins+openWinMilestones,losses:completed.filter(t=>t.result==='LOSS').length,open:activeTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
