@@ -12,6 +12,13 @@ const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
 const DUPLICATE_WINDOW_SECONDS = 15 * 60;
 const DUPLICATE_PRICE_TOLERANCE = 0.003;
+const MALAYSIA_UTC_OFFSET_MINUTES = 480;
+const SIGNAL_OFF_START_MINUTE = 510;
+const SIGNAL_ON_START_MINUTE = 1110;
+function isSignalSessionOpen(date = new Date()) {
+  const malaysiaMinutes = (date.getUTCHours()*60 + date.getUTCMinutes() + MALAYSIA_UTC_OFFSET_MINUTES) % 1440;
+  return malaysiaMinutes >= SIGNAL_ON_START_MINUTE || malaysiaMinutes < SIGNAL_OFF_START_MINUTE;
+}
 
 export default {
   async fetch(request, env, ctx) {
@@ -25,6 +32,9 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
+    // Malaysia session filter only; strategy logic is unchanged.
+    // OFF: 08:30-18:30 MYT. ON: 18:30-08:30 MYT.
+    if (!isSignalSessionOpen()) return;
     // Cron is the outgoing Telegram signal engine.
     if (!env.TELEGRAM_BOT_TOKEN || !env.TRADE_STATE) return;
     await ensureTelegramWebhook(env);
