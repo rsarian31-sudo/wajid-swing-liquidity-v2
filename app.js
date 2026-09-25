@@ -166,7 +166,15 @@ function renderAccountReport(report){
   }
 }
 function renderDiagnostics(q = {}) {
-nal, active) {
+  const risk = q.riskFilter || {};
+  $('diagnostics').innerHTML = [
+    ['Latest price', fmt(q.latestPrice)], ['Trend', q.logic==='VOLUME_OB_RETEST' ? (q.confirmation || 'WAIT') : '—'], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
+    ['Box / Retest', q.confirmation || 'WAITING_FOR_RETEST'], ['Reaction entry', q.entryRule || '—'], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
+    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'INVALID'}` : risk.passed ? 'PASSED' : 'WAIT']
+  ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+}
+
+function markEntryCandle(candles, signal, active) {
   const entryTime = Number(active?.signalTime || signal?.time || 0);
   if (!Number.isFinite(entryTime) || !entryTime) { entryCandleSeries.setData([]); return []; }
   const candle = candles.find(c => Number(c.time) === entryTime);
