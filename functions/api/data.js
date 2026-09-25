@@ -6,7 +6,7 @@ const FEED_CACHE_TTL_MS=15000;
 export async function onRequest({request,env,waitUntil}){
   if(request.method!=='GET')return json({success:false,error:'Method not allowed'},405);
   try{
-    const u=new URL(request.url),interval=ALLOWED.has(u.searchParams.get('interval'))?u.searchParams.get('interval'):'5min';
+    const u=new URL(request.url),interval=ALLOWED.has(u.searchParams.get('interval'))?u.searchParams.get('interval'):'1min';
     const outputsize=Math.min(500,Math.max(100,Number(u.searchParams.get('outputsize')||CONFIG.outputSize)));
     const cacheKey=interval+':'+outputsize;
     const cached=FEED_CACHE.get(cacheKey);
@@ -79,7 +79,47 @@ export async function onRequest({request,env,waitUntil}){
     const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT').length; const openWinMilestones=activeTrades.filter(t=>t.tp2Hit===true).length; const summary={totalTrades:trades.length,wins:completedWins+openWinMilestones,losses:completed.filter(t=>t.result==='LOSS').length,open:activeTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
     const active=activeTrades[0]||null,activePlan=active?{entry:active.entry,stopLoss:active.stopLoss,tp1:active.tp1,tp2:active.tp2,tp3:active.tp3,tp4:active.tp4,risk:active.risk,entryRule:active.entryRule}:null;
-    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:{...CONFIG,intervalConfig:interval==='1min'?{requireRetest:false,minReactionBody:CONFIG.minReactionBody,minVolumePercent:CONFIG.minVolumePercent} :{requireRetest:true,minReactionBody:0.45,minVolumePercent:58}}},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:{...(analysis.diagnostics||{}),feed:feedDiagnostics},news:null,volumeOB:analysis.volumeOB,history:{summary,trades}});
+    function accountR(t){
+      const result=String(t?.result||'').toUpperCase();
+      const hits=Array.isArray(t?.hitTPs)?t.hitTPs:[];
+      if(result==='LOSS')return -1;
+      if(result==='BREAK EVEN')return 0;
+      if(result==='FULL TP HIT')return 4;
+      if(result==='WIN'){
+        if(hits.includes('TP4'))return 4;
+        if(hits.includes('TP3'))return 2;
+        if(hits.includes('TP2'))return 1;
+      }
+      return 0;
+    }
+    function malaysiaDayKey(ms){
+      const d=new Date(Number(ms)+480*60000);
+      return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+    }
+    function malaysiaWeekKey(ms){
+      const d=new Date(Number(ms)+480*60000);
+      const day=d.getUTCDay();
+      d.setUTCDate(d.getUTCDate()-(day===0?6:day-1));
+      return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
+    }
+    function buildAccountReport(source){
+      const closed1m=source.filter(t=>t?.interval==='1min'&&t?.status==='CLOSED');
+      const dayKey=malaysiaDayKey(Date.now());
+      const weekKey=malaysiaWeekKey(Date.now());
+      const make=(rows,period)=> {
+        const rs=rows.map(accountR);
+        const totalR=Number(rs.reduce((a,b)=>a+b,0).toFixed(2));
+        const profit=Number(rs.filter(r=>r>0).reduce((a,b)=>a+b*8,0).toFixed(2));
+        const loss=Number(rs.filter(r=>r<0).reduce((a,b)=>a+b*8,0).toFixed(2));
+        const net=Number((profit+loss).toFixed(2));
+        return {period,startingBalance:100,riskPerTrade:8,trades:rows.length,profit,loss,net,totalR,currentBalance:Number((100+net).toFixed(2))};
+      };
+      const daily=closed1m.filter(t=>malaysiaDayKey(t.exitTime||t.signalTime||t.createdAt)===dayKey);
+      const weekly=closed1m.filter(t=>malaysiaWeekKey(t.exitTime||t.signalTime||t.createdAt)===weekKey);
+      return {daily:make(daily,'DAILY'),weekly:make(weekly,'WEEKLY')};
+    }
+    const accountReport=buildAccountReport(trades);
+    return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:{...CONFIG,intervalConfig:interval==='1min'?{requireRetest:false,minReactionBody:CONFIG.minReactionBody,minVolumePercent:CONFIG.minVolumePercent} :{requireRetest:true,minReactionBody:0.45,minVolumePercent:58}}},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:{...(analysis.diagnostics||{}),feed:feedDiagnostics},news:null,volumeOB:analysis.volumeOB,history:{summary,trades},accountReport});
   }catch(e){return json({success:false,error:e?.message||'Market data error'},503)}
 }
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':'*'}})}
