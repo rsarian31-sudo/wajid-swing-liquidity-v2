@@ -66,7 +66,13 @@ function syncTimeframeUI() {
   $('signalLabel').textContent = `${tfLabel()} CURRENT SIGNAL`;
   $('marketTf').textContent = tfLong();
 }
-function resultClass(result) { return result === 'WIN' || result === 'FULL TP HIT' ? 'win' : result === 'LOSS' ? 'loss' : 'open'; }
+function resultClass(trade) {
+  const status = String(trade?.status || '').toUpperCase();
+  const result = String(trade?.result || '').toUpperCase();
+  if (status !== 'CLOSED') return 'open';
+  if (result === 'WIN' || result === 'FULL TP HIT') return 'win';
+  return 'loss';
+}
 function calcStats(trades) {
   const list = trades || [], wins = list.filter(t => t.result === 'WIN' || t.result === 'FULL TP HIT').length, losses = list.filter(t => t.result === 'LOSS').length, open = list.filter(t => t.result === 'OPEN').length;
   const totalR = list.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
@@ -90,7 +96,7 @@ function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
   const visibleRows = historyExpanded ? rows : rows.slice(0, 5);
   $('history').innerHTML = visibleRows.length ? visibleRows.map((t) => {
-    const rc = resultClass(t.result), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
+    const rc = resultClass(t), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
     return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
   }).join('') : '<tr><td colspan="11">No confirmed trades.</td></tr>';
   const wrap = $('historyView');
@@ -121,7 +127,7 @@ function renderDailyHistory(trades) {
     const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
       const r = Number(t.realizedR || 0);
       const rLabel = `${r > 0 ? '+' : ''}${fmt(r)}R`;
-      return `<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t.result)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
+      return `<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
     }).join('');
     return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>`;
   }).join('');
