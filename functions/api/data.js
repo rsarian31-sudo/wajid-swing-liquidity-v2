@@ -85,7 +85,7 @@ export async function onRequest({request,env,waitUntil}){
     const activeTrades=[...activeMap.values()];
     const activeIds=new Set(activeTrades.map(t=>String(t.id)));
     const completed=trades.filter(t=>!activeIds.has(String(t.id)) && t.status==='CLOSED');
-    const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT').length; const openWinMilestones=activeTrades.filter(t=>t.tp2Hit===true).length; const summary={totalTrades:trades.length,wins:completedWins+openWinMilestones,losses:completed.filter(t=>t.result==='LOSS').length,open:activeTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
+    const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE').length; const openWinMilestones=activeTrades.filter(t=>t.tp2Hit===true).length; const summary={totalTrades:trades.length,wins:completedWins+openWinMilestones,losses:completed.filter(t=>t.result==='LOSS').length,open:activeTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
     const active=activeTrades[0]||null,activePlan=active?{entry:active.entry,stopLoss:active.stopLoss,tp1:active.tp1,tp2:active.tp2,tp3:active.tp3,tp4:active.tp4,risk:active.risk,entryRule:active.entryRule}:null;
     function accountR(t){
@@ -93,12 +93,13 @@ export async function onRequest({request,env,waitUntil}){
       const hits=Array.isArray(t?.hitTPs)?t.hitTPs:[];
       if(result==='LOSS')return -1;
       if(result==='BREAK EVEN')return 0;
-      if(result==='FULL TP HIT')return 4;
+      if(result==='FULL TP HIT' || result==='FINAL TP4 HIT')return 4;
       // Dollar account P/L is realized only after the trade is CLOSED.
       // TP2/TP3 are milestones while OPEN, not realized profit.
-      if(result==='FULL TP HIT' || hits.includes('TP4'))return 4;
+      if(result==='FULL TP HIT' || result==='FINAL TP4 HIT' || hits.includes('TP4'))return 4;
       // If TP2/TP3 was reached and the trade later closes at entry,
       // the realized result is +1R (not the highest milestone reached).
+      if(result==='TP2 HIT CLOSE' || result==='TP3 HIT CLOSE')return 1;
       if(result==='WIN' && (t.reason==='SL_AFTER_TP2_WIN' || hits.includes('TP2')))return 1;
       return 0;
     }
