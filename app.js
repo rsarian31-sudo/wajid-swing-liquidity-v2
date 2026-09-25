@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let interval = '5min';
+let interval = '1min';
 let loading = false;
 let historyView = 'all';
 let historyData = null;
@@ -149,6 +149,178 @@ function setHistoryView(view) {
   historyExpanded = false;
   document.querySelectorAll('[data-history-view]').forEach((button) => button.classList.toggle('active', button.dataset.historyView === view));
   if (historyData) renderHistory(historyData);
+}
+function money(v){const n=Number(v||0);return (n<0?'−
+  const risk = q.riskFilter || {};
+  $('diagnostics').innerHTML = [
+    ['Latest price', fmt(q.latestPrice)], ['Trend', q.logic==='VOLUME_OB_RETEST' ? (q.confirmation || 'WAIT') : '—'], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
+    ['Box / Retest', q.confirmation || 'WAITING_FOR_RETEST'], ['Reaction entry', q.entryRule || '—'], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
+    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'INVALID'}` : risk.passed ? 'PASSED' : 'WAIT']
+  ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+}
+
+function markEntryCandle(candles, signal, active) {
+  const entryTime = Number(active?.signalTime || signal?.time || 0);
+  if (!Number.isFinite(entryTime) || !entryTime) { entryCandleSeries.setData([]); return []; }
+  const candle = candles.find(c => Number(c.time) === entryTime);
+  if (!candle) { entryCandleSeries.setData([]); return []; }
+  entryCandleSeries.setData([candle]);
+  const direction = active?.direction || signal?.direction;
+  const isBuy = direction === 'BUY';
+  return [{ time: entryTime, position: isBuy ? 'belowBar' : 'aboveBar', shape: isBuy ? 'arrowUp' : 'arrowDown', color: isBuy ? '#8affc8' : '#ff9aaa', text: 'ENTRY CANDLE' }];
+}
+
+function volumeOBMarkers(volumeOB) {
+  return (volumeOB?.signals || []).map((x) => ({
+    time: Number(x.time),
+    position: x.direction === 'BUY' ? 'belowBar' : 'aboveBar',
+    shape: x.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
+    color: x.direction === 'BUY' ? '#00ffcc' : '#ff007f',
+    text: x.direction === 'BUY' ? `OB BUY ${x.buyPercent}%` : `OB SELL ${x.sellPercent}%`
+  })).filter(x => Number.isFinite(x.time));
+}
+
+async function load() {
+  if (loading) return; loading = true; setStatus('LOADING');
+  try {
+    const response = await fetch(`/api/data?interval=${encodeURIComponent(interval)}&outputsize=300`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Server data unavailable');
+    const candles = (data.candles || []).map(x => ({time:Number(x.time),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+    candleSeries.setData(candles);
+    swingHighSeries.setData((data.swings?.highs || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
+    swingLowSeries.setData((data.swings?.lows || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
+
+    const signal=data.signal||{};
+    const active=data.activeTrade;
+    const retestMarkers=volumeOBMarkers(data.volumeOB); const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
+    const entryMarker=markEntryCandle(candles, signal, active);
+    candleSeries.setMarkers([...sweepMarkers, ...retestMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
+
+    const obZone=data.volumeOB?.activeZone||null;
+    setZoneLine(obTopSeries,candles,obZone,'top');
+    setZoneLine(obBottomSeries,candles,obZone,'bottom');
+    setZoneLine(obSplitSeries,candles,obZone,'split');
+
+    $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
+    $('signalMeta').textContent=signal.confirmationTime?`Confirmed ${time(signal.confirmationTime)} · Entry ${time(signal.entryTime||signal.time)}`:signal.time?`Entry ${time(signal.entryTime||signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
+    $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
+
+    const plan=data.tradePlan;
+    const activeDirection=active?.direction||null;
+    const planFields=[plan?.entry,plan?.stopLoss,plan?.tp1,plan?.tp2,plan?.tp3,plan?.tp4];
+    const validPlan=Boolean(active&&activeDirection&&plan&&planFields.every(v=>Number.isFinite(Number(v))&&Number(v)>0));
+    $('planState').textContent=validPlan?`${activeDirection} ACTIVE`:'No active trade';
+    $('entry').textContent=validPlan?fmt(plan.entry):'—';
+    $('sl').textContent=validPlan?fmt(plan.stopLoss):'—';
+    $('tp1').textContent=validPlan?fmt(plan.tp1):'—';
+    $('tp2').textContent=validPlan?fmt(plan.tp2):'—';
+    $('tp3').textContent=validPlan?fmt(plan.tp3):'—';
+    $('tp4').textContent=validPlan?fmt(plan.tp4):'—';
+    $('risk').textContent=validPlan?fmt(plan.risk):'—';
+    setFlat(entrySeries,candles,validPlan?plan.entry:null);
+    setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
+    setFlat(tp2Series,candles,validPlan?plan.tp2:null);
+
+    renderHistory(data.history); renderAccountReport(data.accountReport); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
+  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
+  finally { loading=false; }
+}
+document.querySelectorAll('[data-tf]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.tf===interval)return;interval=button.dataset.tf;syncTimeframeUI();load();}));
+document.querySelectorAll('[data-history-view]').forEach(button=>button.addEventListener('click',()=>setHistoryView(button.dataset.historyView)));
+$('refresh').addEventListener('click',load);
+window.addEventListener('resize',()=>chart.applyOptions({width:$('chart').clientWidth,height:$('chart').clientHeight}));
+syncTimeframeUI(); load(); setInterval(load,60000);:'
+  const risk = q.riskFilter || {};
+  $('diagnostics').innerHTML = [
+    ['Latest price', fmt(q.latestPrice)], ['Trend', q.logic==='VOLUME_OB_RETEST' ? (q.confirmation || 'WAIT') : '—'], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
+    ['Box / Retest', q.confirmation || 'WAITING_FOR_RETEST'], ['Reaction entry', q.entryRule || '—'], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
+    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'INVALID'}` : risk.passed ? 'PASSED' : 'WAIT']
+  ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+}
+
+function markEntryCandle(candles, signal, active) {
+  const entryTime = Number(active?.signalTime || signal?.time || 0);
+  if (!Number.isFinite(entryTime) || !entryTime) { entryCandleSeries.setData([]); return []; }
+  const candle = candles.find(c => Number(c.time) === entryTime);
+  if (!candle) { entryCandleSeries.setData([]); return []; }
+  entryCandleSeries.setData([candle]);
+  const direction = active?.direction || signal?.direction;
+  const isBuy = direction === 'BUY';
+  return [{ time: entryTime, position: isBuy ? 'belowBar' : 'aboveBar', shape: isBuy ? 'arrowUp' : 'arrowDown', color: isBuy ? '#8affc8' : '#ff9aaa', text: 'ENTRY CANDLE' }];
+}
+
+function volumeOBMarkers(volumeOB) {
+  return (volumeOB?.signals || []).map((x) => ({
+    time: Number(x.time),
+    position: x.direction === 'BUY' ? 'belowBar' : 'aboveBar',
+    shape: x.direction === 'BUY' ? 'arrowUp' : 'arrowDown',
+    color: x.direction === 'BUY' ? '#00ffcc' : '#ff007f',
+    text: x.direction === 'BUY' ? `OB BUY ${x.buyPercent}%` : `OB SELL ${x.sellPercent}%`
+  })).filter(x => Number.isFinite(x.time));
+}
+
+async function load() {
+  if (loading) return; loading = true; setStatus('LOADING');
+  try {
+    const response = await fetch(`/api/data?interval=${encodeURIComponent(interval)}&outputsize=300`, { cache: 'no-store' });
+    const data = await response.json();
+    if (!response.ok || !data.success) throw new Error(data.error || 'Server data unavailable');
+    const candles = (data.candles || []).map(x => ({time:Number(x.time),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close)})).filter(x => [x.time,x.open,x.high,x.low,x.close].every(Number.isFinite));
+    candleSeries.setData(candles);
+    swingHighSeries.setData((data.swings?.highs || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
+    swingLowSeries.setData((data.swings?.lows || []).map(x=>({time:Number(x.time),value:Number(x.price)})).filter(x=>Number.isFinite(x.time)&&Number.isFinite(x.value)));
+
+    const signal=data.signal||{};
+    const active=data.activeTrade;
+    const retestMarkers=volumeOBMarkers(data.volumeOB); const sweepMarkers=(data.liquidity?.sweeps||[]).map(x=>({time:Number(x.time),position:x.type==='BULLISH'?'belowBar':'aboveBar',shape:x.type==='BULLISH'?'arrowUp':'arrowDown',color:x.type==='BULLISH'?'#35dfa0':'#ff6578',text:x.type==='BULLISH'?'SWEEP ↑':'SWEEP ↓'})).filter(x=>Number.isFinite(x.time));
+    const entryMarker=markEntryCandle(candles, signal, active);
+    candleSeries.setMarkers([...sweepMarkers, ...retestMarkers, ...entryMarker].sort((a,b)=>a.time-b.time));
+
+    const obZone=data.volumeOB?.activeZone||null;
+    setZoneLine(obTopSeries,candles,obZone,'top');
+    setZoneLine(obBottomSeries,candles,obZone,'bottom');
+    setZoneLine(obSplitSeries,candles,obZone,'split');
+
+    $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
+    $('signalMeta').textContent=signal.confirmationTime?`Confirmed ${time(signal.confirmationTime)} · Entry ${time(signal.entryTime||signal.time)}`:signal.time?`Entry ${time(signal.entryTime||signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
+    $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
+
+    const plan=data.tradePlan;
+    const activeDirection=active?.direction||null;
+    const planFields=[plan?.entry,plan?.stopLoss,plan?.tp1,plan?.tp2,plan?.tp3,plan?.tp4];
+    const validPlan=Boolean(active&&activeDirection&&plan&&planFields.every(v=>Number.isFinite(Number(v))&&Number(v)>0));
+    $('planState').textContent=validPlan?`${activeDirection} ACTIVE`:'No active trade';
+    $('entry').textContent=validPlan?fmt(plan.entry):'—';
+    $('sl').textContent=validPlan?fmt(plan.stopLoss):'—';
+    $('tp1').textContent=validPlan?fmt(plan.tp1):'—';
+    $('tp2').textContent=validPlan?fmt(plan.tp2):'—';
+    $('tp3').textContent=validPlan?fmt(plan.tp3):'—';
+    $('tp4').textContent=validPlan?fmt(plan.tp4):'—';
+    $('risk').textContent=validPlan?fmt(plan.risk):'—';
+    setFlat(entrySeries,candles,validPlan?plan.entry:null);
+    setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
+    setFlat(tp2Series,candles,validPlan?plan.tp2:null);
+
+    renderHistory(data.history); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
+  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
+  finally { loading=false; }
+}
+document.querySelectorAll('[data-tf]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.tf===interval)return;interval=button.dataset.tf;syncTimeframeUI();load();}));
+document.querySelectorAll('[data-history-view]').forEach(button=>button.addEventListener('click',()=>setHistoryView(button.dataset.historyView)));
+$('refresh').addEventListener('click',load);
+window.addEventListener('resize',()=>chart.applyOptions({width:$('chart').clientWidth,height:$('chart').clientHeight}));
+syncTimeframeUI(); load(); setInterval(load,60000);)+Math.abs(n).toFixed(2);}
+function renderAccountReport(report){
+  const daily=report?.daily||{},weekly=report?.weekly||{};
+  for(const [prefix,data] of [['daily',daily],['weekly',weekly]]){
+    const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
+    set(prefix+'Trades',data.trades??0);
+    set(prefix+'Profit',money(data.profit));
+    set(prefix+'Loss',money(data.loss));
+    set(prefix+'Net',money(data.net));
+    set(prefix+'Balance',money(data.currentBalance??100));
+  }
 }
 function renderDiagnostics(q = {}) {
   const risk = q.riskFilter || {};
