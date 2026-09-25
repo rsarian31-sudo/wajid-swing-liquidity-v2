@@ -1,7 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 const RESET_VERSION='volume-ob-creation-v2';
 const TRADING_RESET_VERSION='fresh-account-20260925-v1';
-const freshIntervals=()=>({'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,ruleVersion:RESET_VERSION}});
+const freshIntervals=()=>({'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,freshStartPending:true,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,freshStartPending:true,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,structureDirection:null,freshStartPending:true,ruleVersion:RESET_VERSION}});
 const EMPTY=()=>({version:3,ruleVersion:RESET_VERSION,tradingResetVersion:TRADING_RESET_VERSION,intervals:{'1min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'5min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION},'15min':{active:null,activeTrades:[],trades:[],lastSignalId:null,lastCandleTime:null,ruleVersion:RESET_VERSION}},telegram:{offset:0,subscribers:[],pending:[],sentKeys:[]},schedulerLocks:{}});
 export class WajidTradeState extends DurableObject{
   async fetch(request){
