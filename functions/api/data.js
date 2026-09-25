@@ -85,13 +85,12 @@ export async function onRequest({request,env,waitUntil}){
       if(result==='LOSS')return -1;
       if(result==='BREAK EVEN')return 0;
       if(result==='FULL TP HIT')return 4;
-      // TP2/TP3/TP4 are account milestones even while the trade
-      // is still OPEN. This keeps Daily/Weekly reports aligned with
-      // the Trade History calculation.
-      if(hits.includes('TP4') || result==='FULL TP HIT')return 4;
-      if(hits.includes('TP3'))return 2;
-      if(hits.includes('TP2'))return 1;
-      if(result==='WIN')return 0;
+      // Dollar account P/L is realized only after the trade is CLOSED.
+      // TP2/TP3 are milestones while OPEN, not realized profit.
+      if(result==='FULL TP HIT' || hits.includes('TP4'))return 4;
+      // If TP2/TP3 was reached and the trade later closes at entry,
+      // the realized result is +1R (not the highest milestone reached).
+      if(result==='WIN' && (t.reason==='SL_AFTER_TP2_WIN' || hits.includes('TP2')))return 1;
       return 0;
     }
     // Trade/candle timestamps in this system are normally Unix seconds.
@@ -125,8 +124,8 @@ export async function onRequest({request,env,waitUntil}){
         const net=Number((profit+loss).toFixed(2));
         return {period,startingBalance:100,riskPerTrade:8,trades:rows.length,profit,loss,net,totalR,currentBalance:Number((100+net).toFixed(2))};
       };
-      const daily=eligible1m.filter(t=>malaysiaDayKey(t.signalTime||t.createdAt)===dayKey);
-      const weekly=eligible1m.filter(t=>malaysiaWeekKey(t.signalTime||t.createdAt)===weekKey);
+      const daily=closed1m.filter(t=>malaysiaDayKey(t.exitTime||t.signalTime||t.createdAt)===dayKey);
+      const weekly=closed1m.filter(t=>malaysiaWeekKey(t.exitTime||t.signalTime||t.createdAt)===weekKey);
       return {daily:make(daily,'DAILY'),weekly:make(weekly,'WEEKLY')};
     }
     const accountReport=buildAccountReport(trades);
