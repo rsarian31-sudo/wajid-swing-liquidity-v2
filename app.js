@@ -152,16 +152,21 @@ function setHistoryView(view) {
 }
 function money(v){
   const n=Number(v||0);
-  return (n<0?'−
-  const risk = q.riskFilter || {};
-  $('diagnostics').innerHTML = [
-    ['Latest price', fmt(q.latestPrice)], ['Trend', q.logic==='VOLUME_OB_RETEST' ? (q.confirmation || 'WAIT') : '—'], ['Latest swing high', fmt(q.latestSwingHigh)], ['Latest swing low', fmt(q.latestSwingLow)],
-    ['Box / Retest', q.confirmation || 'WAITING_FOR_RETEST'], ['Reaction entry', q.entryRule || '—'], ['Rejection', q.rejection || '—'], ['Volume confirmed', q.volumeConfirmed ? 'YES' : 'NO'],
-    ['Risk filter', risk.rejected ? `REJECTED · ${risk.reason || 'INVALID'}` : risk.passed ? 'PASSED' : 'WAIT']
-  ].map(([k,v]) => `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join('');
+  return (n<0?'-$':'$')+Math.abs(n).toFixed(2);
 }
-
-function markEntryCandle(candles, signal, active) {
+function renderAccountReport(report){
+  const daily=report?.daily||{}, weekly=report?.weekly||{};
+  const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
+  for(const [prefix,data] of [['daily',daily],['weekly',weekly]]){
+    set(prefix+'Trades',data.trades??0);
+    set(prefix+'Profit',money(data.profit));
+    set(prefix+'Loss',money(data.loss));
+    set(prefix+'Net',money(data.net));
+    set(prefix+'Balance',money(data.currentBalance??100));
+  }
+}
+function renderDiagnostics(q = {}) {
+nal, active) {
   const entryTime = Number(active?.signalTime || signal?.time || 0);
   if (!Number.isFinite(entryTime) || !entryTime) { entryCandleSeries.setData([]); return []; }
   const candle = candles.find(c => Number(c.time) === entryTime);
