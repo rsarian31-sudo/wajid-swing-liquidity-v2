@@ -389,7 +389,9 @@ function advanceActiveTrade(active,candles){
 
         if(label==='TP2'){
           // TP2 = WIN milestone. Keep the position open and keep SL at Entry.
-          next.result='WIN';
+          // TP2 is only a milestone. Keep the trade OPEN until TP4 or
+          // the Entry stop is hit.
+          next.result='OPEN';
           next.status='OPEN';
           next.stopLoss=Number(next.entry.toFixed(2));
         }
@@ -397,7 +399,7 @@ function advanceActiveTrade(active,candles){
         if(label==='TP4'){
           return{
             active:null,
-            closed:closeTrade(next,'FULL TP HIT',4,next.tp4,candle.time,'TP4 hit'),
+            closed:closeTrade(next,'FINAL TP4 HIT',4,next.tp4,candle.time,'TP4 hit'),
             notifications
           };
         }
@@ -410,12 +412,13 @@ function advanceActiveTrade(active,candles){
     const sl=active.direction==='BUY'?candle.low<=currentStop:candle.high>=currentStop;
     if(sl){
       if(next.tp2Hit){
-        // TP2 already established WIN. If price returns to Entry, close as
-        // WIN/BE rather than LOSS. No additional profit is realized.
-        next.realizedR=0;
+        // TP2/TP3 milestones have been reached. If Entry is hit, close
+        // with the highest realized account milestone: +1R.
+        next.realizedR=1;
+        const closeLabel=next.tp3Hit?'TP3 HIT CLOSE':'TP2 HIT CLOSE';
         return{
           active:null,
-          closed:closeTrade(next,'WIN',0,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP2'),
+          closed:closeTrade(next,closeLabel,1,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP2'),
           notifications:[...notifications,{type:'SL_AFTER_TP2',interval:active.interval,trade:next,candleTime:candle.time}]
         };
       }
