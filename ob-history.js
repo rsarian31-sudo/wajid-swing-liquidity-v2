@@ -138,7 +138,7 @@
   }
 
   function updateLegend(data, interval) {
-    document.querySelector('[data-wj-legend="tf"]')?.replaceChildren(document.createTextNode(interval === '5min' ? '5M' : '15M'));
+    document.querySelector('[data-wj-legend="tf"]')?.replaceChildren(document.createTextNode(interval === '5min' ? '5M' : '1M'));
     document.querySelector('[data-wj-legend="provider"]')?.replaceChildren(document.createTextNode(data?.dataProvider?.name || 'LIVE'));
     const candles = data?.candles || [];
     const last = candles.at(-1)?.close;
@@ -149,7 +149,7 @@
     for (let i=0;i<30 && !window.__wajidChart;i++) await wait(200);
     const chart = window.__wajidChart; if (!chart) return;
     setupShell();
-    state.interval = interval || document.querySelector('[data-tf].active')?.dataset.tf || '15min';
+    state.interval = interval || document.querySelector('[data-tf].active')?.dataset.tf || '5min';
     try {
       const r = await fetch(`/api/data?interval=${encodeURIComponent(state.interval)}&outputsize=300`, {cache:'no-store'});
       const data = await r.json(); if (!r.ok || !data.success) return;
