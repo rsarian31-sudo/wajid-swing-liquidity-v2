@@ -374,7 +374,8 @@ export function analyze(candles = [], options = {}) {
 
 function resolveHistoricalTrade(trade, candles, startIndex) {
   const levels = [trade.tp1, trade.tp2, trade.tp3, trade.tp4].map(Number);
-  const sl = Number(trade.stopLoss);
+  const originalSl = Number(trade.stopLoss);
+  const entry = Number(trade.entry);
   const buy = trade.direction === 'BUY';
   const hitTPs = [];
   let realizedR = 0;
@@ -382,13 +383,17 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
   let status = 'OPEN';
   let exit = null;
   let exitTime = null;
-  let reason = 'Waiting for TP2 WIN or TP4 Full TP HIT';
+  let reason = 'Waiting for TP4 or SL';
+
+  // Historical replay mirrors the live trade manager:
+  // TP1 moves SL to Entry (break-even), TP2/TP3 are milestones,
+  // TP4 closes at +4R, and an Entry stop after TP2/TP3 realizes +1R.
+  let currentStop = originalSl;
 
   for (let i = startIndex + 1; i < candles.length; i++) {
     const c = candles[i];
     const high = Number(c.high), low = Number(c.low);
 
-    const stopTouched = buy ? low <= sl : high >= sl;
     const newlyHit = [];
     for (let j = 0; j < levels.length; j++) {
       if (hitTPs.includes(j + 1)) continue;
@@ -396,84 +401,80 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
       if (targetTouched) newlyHit.push(j + 1);
     }
 
-    // Once TP2 is reached, the trade is officially a WIN.
-    // It remains OPEN until TP4 or SL. A later SL closes the entry but
-    // does not downgrade the already-achieved WIN milestone.
-    if (hitTPs.includes(2)) {
-      for (const tp of newlyHit) {
-        hitTPs.push(tp);
-        realizedR = Math.max(realizedR, tp);
+    // Match live behavior: evaluate TP milestones before the current stop.
+    for (const tp of newlyHit) {
+      hitTPs.push(tp);
+      realizedR = Math.max(realizedR, tp);
+
+      if (tp === 1) {
+        // TP1 activates break-even. From this point onward the stop is Entry,
+        // never the original OB-box SL.
+        currentStop = entry;
       }
-      if (hitTPs.includes(4)) {
+
+      if (tp === 2) {
+        // TP2 is a milestone only. Keep the trade OPEN until TP4 or Entry SL.
+        result = 'OPEN';
+        status = 'OPEN';
+        currentStop = entry;
+        reason = 'TP2_WIN';
+      }
+
+      if (tp === 4) {
         result = 'FULL TP HIT';
         status = 'CLOSED';
         exit = levels[3];
         exitTime = c.time;
+        realizedR = 4;
         reason = 'TP4_FULL';
         break;
       }
-      if (stopTouched) {
-        result = 'WIN';
-        status = 'CLOSED';
-        exit = sl;
-        exitTime = c.time;
-        reason = 'SL_AFTER_TP2_WIN';
-        break;
-      }
-      result = 'WIN';
-      status = 'OPEN';
-      reason = 'TP2_WIN';
-      continue;
     }
 
-    // Before TP2, an SL ends the trade. If SL and TP2 are touched in the
-    // same candle, keep the conservative SL-first rule.
-    const reachesTP2 = newlyHit.includes(2);
-    if (stopTouched && reachesTP2) {
-      result = 'LOSS';
-      status = 'CLOSED';
-      exit = sl;
-      exitTime = c.time;
-      realizedR = -1;
-      reason = 'SL_BEFORE_TP2';
-      break;
-    }
+    if (result === 'FULL TP HIT') break;
 
-    for (const tp of newlyHit) {
-      hitTPs.push(tp);
-      realizedR = Math.max(realizedR, tp);
-    }
-
-    if (hitTPs.includes(4)) {
-      result = 'FULL TP HIT';
-      status = 'CLOSED';
-      exit = levels[3];
-      exitTime = c.time;
-      reason = 'TP4_FULL';
-      break;
-    }
-
-    if (hitTPs.includes(2)) {
-      // TP2 is the official WIN milestone. Keep monitoring for TP4 or SL.
-      result = 'WIN';
-      status = 'OPEN';
-      reason = 'TP2_WIN';
-      continue;
-    }
+    // Check the CURRENT stop after TP updates. This is important for candles
+    // where TP1 and the stop are both touched: once TP1 is reached, the stop
+    // is Entry, so the outcome is break-even rather than -1R.
+    const stopTouched = buy ? low <= currentStop : high >= currentStop;
 
     if (stopTouched) {
+      if (hitTPs.includes(2)) {
+        // After TP2/TP3, an Entry stop closes the trade with +1R realized.
+        realizedR = 1;
+        result = hitTPs.includes(3) ? 'TP3 HIT CLOSE' : 'TP2 HIT CLOSE';
+        status = 'CLOSED';
+        exit = currentStop;
+        exitTime = c.time;
+        reason = 'SL_AT_ENTRY_AFTER_TP2';
+        break;
+      }
+
+      if (hitTPs.includes(1)) {
+        // TP1 was reached, so the stop is Entry: this is break-even, not LOSS.
+        realizedR = 0;
+        result = 'BREAK EVEN';
+        status = 'CLOSED';
+        exit = currentStop;
+        exitTime = c.time;
+        reason = 'SL_AT_ENTRY_AFTER_TP1';
+        break;
+      }
+
+      // Original SL was reached before TP1.
+      realizedR = -1;
       result = 'LOSS';
       status = 'CLOSED';
-      exit = sl;
+      exit = originalSl;
       exitTime = c.time;
-      realizedR = -1;
-      reason = 'SL_BEFORE_TP2';
+      reason = 'SL_BEFORE_TP1';
       break;
     }
   }
 
   return {
     ...trade,
+    stopLoss: currentStop,
     tp1Hit: hitTPs.includes(1),
     tp2Hit: hitTPs.includes(2),
     tp3Hit: hitTPs.includes(3),
@@ -487,7 +488,6 @@ function resolveHistoricalTrade(trade, candles, startIndex) {
     reason
   };
 }
-
 export function buildHistory(candles = [], options = {}) {
   const cfg = strategyConfig(options.interval);
   const result = buildAnalysis(candles, options);
