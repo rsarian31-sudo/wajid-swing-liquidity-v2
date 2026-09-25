@@ -75,8 +75,12 @@ function resultClass(trade) {
   return 'loss';
 }
 function calcStats(trades) {
-  const list = trades || [], wins = list.filter(t => t.result === 'WIN' || t.result === 'FULL TP HIT').length, losses = list.filter(t => t.result === 'LOSS').length, open = list.filter(t => t.result === 'OPEN').length;
-  const totalR = list.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
+  const list = trades || [];
+  const closed = list.filter(t => String(t?.status || '').toUpperCase() === 'CLOSED');
+  const wins = closed.filter(t => ['WIN','FULL TP HIT','FINAL TP4 HIT','TP2 HIT CLOSE','TP3 HIT CLOSE'].includes(String(t.result || '').toUpperCase())).length;
+  const losses = closed.filter(t => String(t.result || '').toUpperCase() === 'LOSS').length;
+  const open = list.filter(t => String(t?.status || '').toUpperCase() !== 'CLOSED').length;
+  const totalR = closed.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
   return { signals: list.length, wins, losses, open, winRate: wins + losses ? Number((wins / (wins + losses) * 100).toFixed(2)) : 0, totalR: Number(totalR.toFixed(2)) };
 }
 function dayKey(ts) { const d = new Date(Number(ts) * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
@@ -97,8 +101,10 @@ function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
   const visibleRows = historyExpanded ? rows : rows.slice(0, 5);
   $('history').innerHTML = visibleRows.length ? visibleRows.map((t) => {
-    const rc = resultClass(t), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
-    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
+    const rc = resultClass(t), sc = t.direction === 'BUY' ? 'buy' : 'sell', isClosed = String(t?.status || '').toUpperCase() === 'CLOSED', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
+    const resultLabel = isClosed ? String(t.result || 'CLOSED') : 'OPEN';
+    const rLabel = isClosed ? `${r > 0 ? '+' : ''}${fmt(r)}R` : '—';
+    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(resultLabel)}</td><td class="${rc}">${rLabel}</td></tr>`;
   }).join('') : '<tr><td colspan="11">No confirmed trades.</td></tr>';
   const wrap = $('historyView');
   const oldButton = wrap.querySelector('[data-history-more]');
