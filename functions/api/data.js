@@ -92,12 +92,19 @@ export async function onRequest({request,env,waitUntil}){
       }
       return 0;
     }
+    // Trade/candle timestamps in this system are normally Unix seconds.
+    // Normalize seconds and milliseconds before applying Malaysia UTC+8.
+    function malaysiaDate(ms){
+      const raw=Number(ms);
+      const millis=raw>0&&raw<1e12?raw*1000:raw;
+      return new Date(millis+480*60000);
+    }
     function malaysiaDayKey(ms){
-      const d=new Date(Number(ms)+480*60000);
+      const d=malaysiaDate(ms);
       return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
     }
     function malaysiaWeekKey(ms){
-      const d=new Date(Number(ms)+480*60000);
+      const d=malaysiaDate(ms);
       const day=d.getUTCDay();
       d.setUTCDate(d.getUTCDate()-(day===0?6:day-1));
       return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
