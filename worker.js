@@ -451,6 +451,12 @@ async function retryPendingTelegram(env,telegram){
     const subscriber=telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
     if(!subscriber || subscriber.active!==true) continue;
     const result=await sendTelegram(env,item.event,[subscriber]);
+    if(result?.messageIds?.[String(item.chatId)]){
+      const key=item.key||telegramEventKey(item.event,String(item.chatId));
+      if(!Array.isArray(telegram.sentKeys)) telegram.sentKeys=[];
+      if(!telegram.sentKeys.includes(key)) telegram.sentKeys.push(key);
+      continue;
+    }
     if(result===false || (result?.failedChatIds||[]).includes(String(item.chatId))){
       item.attempts=Number(item.attempts||0)+1;
       item.nextAttemptAt=now+Math.min(15*60*1000,Math.max(60*1000,2**Math.min(item.attempts,4)*1000));
