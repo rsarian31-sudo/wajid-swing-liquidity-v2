@@ -67,7 +67,8 @@ export async function onRequest({request,env,waitUntil}){
     const closed=candles.filter(c=>c.time+seconds<=now);
     const analysis=analyze(closed,{interval});
     let trades=[];
-    if(env.TRADE_STATE){try{const id=env.TRADE_STATE.idFromName('xauusd'),stub=env.TRADE_STATE.get(id),stateResponse=await stub.fetch('https://state/'),state=await stateResponse.json(),bucket=state?.intervals?.[interval],persisted=[...(Array.isArray(bucket?.trades)?bucket.trades:[]),...(Array.isArray(bucket?.activeTrades)?bucket.activeTrades:[]),...(bucket?.active?[bucket.active]:[])],seen=new Set();trades=persisted.map(t=>({...t,interval:t.interval||interval})).filter(t=>{const key=t.interval+':'+(t.signalTime||'')+':'+(t.direction||'');if(seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>Number(a.signalTime||0)-Number(b.signalTime||0));}catch(_){}}
+    let bucket=null;
+    if(env.TRADE_STATE){try{const id=env.TRADE_STATE.idFromName('xauusd'),stub=env.TRADE_STATE.get(id),stateResponse=await stub.fetch('https://state/'),state=await stateResponse.json();bucket=state?.intervals?.[interval]||null;const persisted=[...(Array.isArray(bucket?.trades)?bucket.trades:[]),...(Array.isArray(bucket?.activeTrades)?bucket.activeTrades:[]),...(bucket?.active?[bucket.active]:[])],seen=new Set();trades=persisted.map(t=>({...t,interval:t.interval||interval})).filter(t=>{const key=t.interval+':'+(t.signalTime||'')+':'+(t.direction||'');if(seen.has(key))return false;seen.add(key);return true;}).sort((a,b)=>Number(a.signalTime||0)-Number(b.signalTime||0));}catch(_){}}
     if(!trades.length)trades=buildHistory(closed,{interval}).map(t=>({...t,interval}));
     // activeTrades is the authoritative source for currently open positions.
     // Do not infer OPEN from historical records with a missing status field.
