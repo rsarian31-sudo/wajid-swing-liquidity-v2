@@ -421,10 +421,21 @@ function advanceActiveTrade(active,candles){
         };
       }
 
+      if(next.tp1Hit){
+        // TP1 already moved SL to Entry. A later touch of Entry before TP2 is
+        // a break-even close, not a loss.
+        next.realizedR=0;
+        return{
+          active:null,
+          closed:closeTrade(next,'BREAK EVEN',0,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP1'),
+          notifications:[...notifications,{type:'BREAK_EVEN',interval:active.interval,trade:next,candleTime:candle.time}]
+        };
+      }
+
       next.realizedR=Number((Number(next.realizedR||0)-1).toFixed(2));
       return{
         active:null,
-        closed:closeTrade(next,'LOSS',next.realizedR,currentStop,candle.time,'SL_BEFORE_TP2'),
+        closed:closeTrade(next,'LOSS',next.realizedR,currentStop,candle.time,'SL_BEFORE_TP1'),
         notifications:[...notifications,{type:'LOSS',interval:active.interval,trade:next,candleTime:candle.time}]
       };
     }
