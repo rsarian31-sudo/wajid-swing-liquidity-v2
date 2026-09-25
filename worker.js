@@ -34,7 +34,7 @@ export default {
   async scheduled(controller, env, ctx) {
     // Malaysia session filter only; strategy logic is unchanged.
     // OFF: 08:30-18:30 MYT. ON: 18:30-08:30 MYT.
-    if (!isSignalSessionOpen()) return;
+    const signalSessionOpen = isSignalSessionOpen();
     // Cron is the outgoing Telegram signal engine.
     if (!env.TELEGRAM_BOT_TOKEN || !env.TRADE_STATE) return;
     await ensureTelegramWebhook(env);
@@ -60,7 +60,7 @@ export default {
           console.log('skipping overlapping scheduler run', interval);
           continue;
         }
-        await runInterval(interval, env);
+        await runInterval(interval, env, signalSessionOpen);
       } catch (error) {
         console.error('scheduled signal error', interval, error?.message || error);
       } finally {
@@ -107,7 +107,7 @@ function telegramAdminPage() {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
 }
 
-async function runInterval(interval, env) {
+async function runInterval(interval, env, signalSessionOpen = true) {
   if (!env.TRADE_STATE) return;
   const feed = await fetchClosedCandles(interval, env);
   const candles = feed.closed;
@@ -165,6 +165,17 @@ async function runInterval(interval, env) {
   }
   bucket.activeTrades = stillActive;
   bucket.active = stillActive[0] || null;
+
+  // During the Malaysia OFF window, continue monitoring existing trades so TP/SL
+  // results are delivered, but do not create or catch up any new signals.
+  if (!signalSessionOpen) {
+    bucket.trades = dedupeTrades(bucket.trades);
+    bucket.lastCandleTime = candles.at(-1)?.time ?? null;
+    current.intervals[interval] = bucket;
+    current.telegram = telegram;
+    await putState(state, current);
+    return;
+  }
 
   // Catch up any signals created since the previous scheduler tick.
   // This prevents a delayed/skipped cron invocation from permanently losing a signal.
