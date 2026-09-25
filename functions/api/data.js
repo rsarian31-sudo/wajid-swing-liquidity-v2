@@ -85,7 +85,7 @@ export async function onRequest({request,env,waitUntil}){
     const activeTrades=[...activeMap.values()];
     const activeIds=new Set(activeTrades.map(t=>String(t.id)));
     const completed=trades.filter(t=>!activeIds.has(String(t.id)) && t.status==='CLOSED');
-    const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE').length; const summary={totalTrades:trades.length,wins:completedWins,losses:completed.filter(t=>t.result==='LOSS').length,open:activeTrades.length,totalR:trades.reduce((s,t)=>s+Number(t.realizedR||0),0)};
+    const completedWins=completed.filter(t=>t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE').length; const completedLosses=completed.filter(t=>t.result==='LOSS').length; const summary={totalTrades:trades.length,wins:completedWins,losses:completedLosses,open:activeTrades.length,totalR:Number(completed.reduce((s,t)=>s+Number(t.realizedR||0),0).toFixed(2))};
     summary.winRate=summary.wins+summary.losses?Number((summary.wins/(summary.wins+summary.losses)*100).toFixed(2)):0;
     const active=activeTrades[0]||null,activePlan=active?{entry:active.entry,stopLoss:active.stopLoss,tp1:active.tp1,tp2:active.tp2,tp3:active.tp3,tp4:active.tp4,risk:active.risk,entryRule:active.entryRule}:null;
     function accountR(t){
