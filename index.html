@@ -105,27 +105,22 @@
     <aside class="right-column">
       <article class="card info-card account-card">
         <div class="card-icon blue">◈</div>
-        <h2>Daily Account Report</h2>
-        <p>1M account calculation · Starting balance $100 · Risk per trade $8</p>
+        <div class="account-title-row">
+          <div>
+            <h2>Daily Account Report</h2>
+            <p>1M account calculation · Starting balance $100 · Risk per trade $8</p>
+          </div>
+          <label class="account-date">
+            <span>Date</span>
+            <input id="dailyDate" type="date" aria-label="Select account report date">
+          </label>
+        </div>
         <div class="account-grid">
           <div><span>Trades</span><b id="dailyTrades">0</b></div>
           <div><span>Profit</span><b id="dailyProfit" class="win">$0.00</b></div>
           <div><span>Loss</span><b id="dailyLoss" class="loss">$0.00</b></div>
           <div><span>Net</span><b id="dailyNet">$0.00</b></div>
           <div><span>Balance</span><b id="dailyBalance">$100.00</b></div>
-        </div>
-      </article>
-
-      <article class="card rules-card account-card">
-        <div class="card-icon purple">☷</div>
-        <h2>Weekly Account Report</h2>
-        <p>Monday–Sunday · 1M signals only · Balance resets to $100 each week</p>
-        <div class="account-grid">
-          <div><span>Trades</span><b id="weeklyTrades">0</b></div>
-          <div><span>Profit</span><b id="weeklyProfit" class="win">$0.00</b></div>
-          <div><span>Loss</span><b id="weeklyLoss" class="loss">$0.00</b></div>
-          <div><span>Net</span><b id="weeklyNet">$0.00</b></div>
-          <div><span>Balance</span><b id="weeklyBalance">$100.00</b></div>
         </div>
       </article>
 
