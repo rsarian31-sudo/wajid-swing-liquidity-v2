@@ -42,7 +42,6 @@ export default {
     // Only poll higher timeframes when a new candle can actually close.
     // This reduces unnecessary market-data requests without changing signal logic.
     const intervals = ['1min'];
-    if (minute % 5 === 0) intervals.push('5min');
         for (const interval of intervals) {
       const id = env.TRADE_STATE.idFromName('xauusd');
       const stateStub = env.TRADE_STATE.get(id);
