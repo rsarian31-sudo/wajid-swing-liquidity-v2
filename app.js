@@ -144,7 +144,12 @@ function renderWeeklyHistory(trades) {
 }
 function renderHistory(history) {
   historyData = history || { summary:{}, trades:[] };
-  renderSummary(historyData.summary || calcStats(historyData.trades));
+  const activeMap = new Map((historyData.activeTrades || []).filter(t => t?.id).map(t => [String(t.id), t]));
+  historyData.trades = (historyData.trades || []).map(t => {
+    const active = t?.id ? activeMap.get(String(t.id)) : null;
+    return active ? {...t, ...active, status:'OPEN', result:'OPEN'} : t;
+  });
+  renderSummary(calcStats(historyData.trades));
   if (historyView === 'daily') renderDailyHistory(historyData.trades); else if (historyView === 'weekly') renderWeeklyHistory(historyData.trades); else {
     $('historyView').innerHTML = `<div class="table-wrap"><table><thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>TP4</th><th>TP HIT</th><th>RESULT</th><th>R</th></tr></thead><tbody id="history"><tr><td colspan="8">Loading…</td></tr></tbody></table></div>`;
     renderTradeRows(historyData.trades);
@@ -228,7 +233,7 @@ async function load() {
     setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
     setFlat(tp2Series,candles,validPlan?plan.tp2:null);
 
-    renderHistory(data.history); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
+    renderHistory({...data.history, activeTrades:data.activeTrades||[]}); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
   } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
   finally { loading=false; }
 }
