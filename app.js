@@ -222,34 +222,7 @@ async function load() {
     setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
     setFlat(tp2Series,candles,validPlan?plan.tp2:null);
 
-    renderHistory(data.history);
-    const accountReport=data.accountReport||{};
-    const money=(v)=>{const n=Number(v||0);return (n<0?'- setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
-  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
-  finally { loading=false; }
-}
-document.querySelectorAll('[data-tf]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.tf===interval)return;interval=button.dataset.tf;syncTimeframeUI();load();}));
-document.querySelectorAll('[data-history-view]').forEach(button=>button.addEventListener('click',()=>setHistoryView(button.dataset.historyView)));
-$('refresh').addEventListener('click',load);
-window.addEventListener('resize',()=>chart.applyOptions({width:$('chart').clientWidth,height:$('chart').clientHeight}));
-syncTimeframeUI(); load(); setInterval(load,60000);:' setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
-  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
-  finally { loading=false; }
-}
-document.querySelectorAll('[data-tf]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.tf===interval)return;interval=button.dataset.tf;syncTimeframeUI();load();}));
-document.querySelectorAll('[data-history-view]').forEach(button=>button.addEventListener('click',()=>setHistoryView(button.dataset.historyView)));
-$('refresh').addEventListener('click',load);
-window.addEventListener('resize',()=>chart.applyOptions({width:$('chart').clientWidth,height:$('chart').clientHeight}));
-syncTimeframeUI(); load(); setInterval(load,60000);)+Math.abs(n).toFixed(2);};
-    for(const [prefix,report] of [['daily',accountReport.daily||{}],['weekly',accountReport.weekly||{}]]){
-      const set=(id,value)=>{const el=$(id);if(el)el.textContent=value;};
-      set(prefix+'Trades',report.trades??0);
-      set(prefix+'Profit',money(report.profit));
-      set(prefix+'Loss',money(report.loss));
-      set(prefix+'Net',money(report.net));
-      set(prefix+'Balance',money(report.currentBalance??100));
-    }
-    renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
+    renderHistory(data.history); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
   } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
   finally { loading=false; }
 }
