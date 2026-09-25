@@ -159,9 +159,12 @@ async function runInterval(interval, env) {
   // Catch up any signals created since the previous scheduler tick.
   // This prevents a delayed/skipped cron invocation from permanently losing a signal.
   const previousCandleTime = Number(bucket.lastCandleTime || 0);
+  const catchupSince = Math.floor(Date.now() / 1000) - 6 * 60 * 60;
   const historicalSignals = buildHistory(candles, { interval })
     .filter(t => t && t.signalTime && t.direction && t.direction !== 'WAIT')
-    .filter(t => previousCandleTime ? Number(t.signalTime) > previousCandleTime : false)
+    // Reconcile recent site-visible signals so a temporary cron/data outage
+    // cannot leave a recent signal missing from Telegram.
+    .filter(t => Number(t.signalTime) >= catchupSince)
     .slice(-20);
 
   const candidates = [...historicalSignals];
@@ -248,6 +251,7 @@ function ensureTelegramState(state, env) {
   if (!Number.isFinite(Number(state.telegram.offset))) state.telegram.offset = 0;
   if (!Array.isArray(state.telegram.subscribers)) state.telegram.subscribers = [];
   if (!Array.isArray(state.telegram.pending)) state.telegram.pending = [];
+  if (!Array.isArray(state.telegram.sentKeys)) state.telegram.sentKeys = [];
   const configured = String(env.TELEGRAM_CHAT_ID || '').trim();
   if (configured) {
     const found = state.telegram.subscribers.find(s => String(s.chatId) === configured);
@@ -420,12 +424,20 @@ function enqueuePendingTelegram(telegram, event, chatId){
 
 async function sendTelegramWithQueue(env,event,telegram){
   const active=(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
-  const result=await sendTelegram(env,event,active);
+  if(!Array.isArray(telegram.sentKeys)) telegram.sentKeys=[];
+  const pendingActive=active.filter(s=>!telegram.sentKeys.includes(telegramEventKey(event,String(s.chatId))));
+  if(!pendingActive.length)return {messageIds:{},failedChatIds:[],ok:true,reason:'ALREADY_DELIVERED'};
+  const result=await sendTelegram(env,event,pendingActive,telegram);
   if(result===false){
-    for(const subscriber of active) enqueuePendingTelegram(telegram,event,String(subscriber.chatId));
-    return {messageIds:{},failedChatIds:active.map(s=>String(s.chatId)),ok:false,reason:'TELEGRAM_SEND_UNAVAILABLE'};
+    for(const subscriber of pendingActive) enqueuePendingTelegram(telegram,event,String(subscriber.chatId));
+    return {messageIds:{},failedChatIds:pendingActive.map(s=>String(s.chatId)),ok:false,reason:'TELEGRAM_SEND_UNAVAILABLE'};
   }
   for(const chatId of (result?.failedChatIds||[])) enqueuePendingTelegram(telegram,event,chatId);
+  for(const chatId of (result?.messageIds?Object.keys(result.messageIds):[])){
+    const key=telegramEventKey(event,chatId);
+    if(!telegram.sentKeys.includes(key)) telegram.sentKeys.push(key);
+  }
+  if(telegram.sentKeys.length>5000)telegram.sentKeys=telegram.sentKeys.slice(-5000);
   return result;
 }
 
