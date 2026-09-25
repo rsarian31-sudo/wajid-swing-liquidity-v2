@@ -111,9 +111,9 @@ export async function onRequest({request,env,waitUntil}){
       return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');
     }
     function buildAccountReport(source){
-      // Count every 1M signal by its signal date. A trade may still be
-      // OPEN, but TP2/TP3/TP4 milestones already contribute to account R.
-      const eligible1m=source.filter(t=>t?.interval==='1min');
+      // Dollar account P/L is based only on fully CLOSED 1M trades.
+      // Open trades and TP milestones do not change the account balance.
+      const closed1m=source.filter(t=>t?.interval==='1min'&&t?.status==='CLOSED');
       const dayKey=malaysiaDayKey(Date.now());
       const weekKey=malaysiaWeekKey(Date.now());
       const make=(rows,period)=> {
