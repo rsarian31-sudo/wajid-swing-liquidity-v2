@@ -31,9 +31,10 @@ const entryCandleSeries = chart.addCandlestickSeries({
 
 const swingHighSeries = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
 const swingLowSeries = chart.addLineSeries({ color: '#4f9cff', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
-const entrySeries = chart.addLineSeries({ color: '#35dfa0', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'ENTRY' });
-const stopSeries = chart.addLineSeries({ color: '#ff6578', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'SL' });
-const tp2Series = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'TP2' });
+const tradeLevelAutoscale = () => null;
+const entrySeries = chart.addLineSeries({ color: '#35dfa0', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'ENTRY', autoscaleInfoProvider: tradeLevelAutoscale });
+const stopSeries = chart.addLineSeries({ color: '#ff6578', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'SL', autoscaleInfoProvider: tradeLevelAutoscale });
+const tp2Series = chart.addLineSeries({ color: '#e4bb5d', lineWidth: 1, priceLineVisible: false, lastValueVisible: true, title: 'TP2', autoscaleInfoProvider: tradeLevelAutoscale });
 
 // Volume-Trend Order Block Engine overlay. Independent from Swing Liquidity.
 const obTopSeries = chart.addLineSeries({ color: '#00ffcc', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false, title: 'OB TOP' });
