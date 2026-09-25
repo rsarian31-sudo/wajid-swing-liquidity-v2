@@ -355,41 +355,81 @@ async function fetchClosedCandles(interval,env){
 }
 function makeActiveTrade(interval,signal,plan,analysis,news){return{id:interval+':'+signal.time+':'+signal.direction,interval,direction:signal.direction,signalTime:signal.entryTime||signal.time,confirmationTime:signal.confirmation?.time??signal.time,confirmationPrice:Number(signal.confirmation?.price??0),signalPrice:Number(signal.price.toFixed(2)),probability:signal.probability,score:signal.score,entry:Number(plan.entry.toFixed(2)),stopLoss:Number(plan.stopLoss.toFixed(2)),tp1:Number(plan.tp1.toFixed(2)),tp2:Number(plan.tp2.toFixed(2)),tp3:Number(plan.tp3.toFixed(2)),tp4:Number(plan.tp4.toFixed(2)),risk:Number(plan.risk.toFixed(2)),sweep:analysis.signal?.sweep||null,news:news||null,tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],realizedR:0,lastProcessedTime:Number(signal.entryTime||signal.time)-1,telegramMessageIds:{},createdAt:Date.now()}}
 function advanceActiveTrade(active,candles){
-  const notifications=[],next={...active,hitTPs:Array.isArray(active.hitTPs)?[...active.hitTPs]:[]};
+  const notifications=[];
+  const next={...active,hitTPs:Array.isArray(active.hitTPs)?[...active.hitTPs]:[]};
   const lastProcessed=Number.isFinite(Number(active.lastProcessedTime))?Number(active.lastProcessedTime):Number(active.signalTime)-1;
   const start=candles.findIndex(c=>Number(c.time)>lastProcessed);
   if(start<0)return{active:next,closed:null,notifications};
+
   for(let i=start;i<candles.length;i++){
     const candle=candles[i];
     next.lastProcessedTime=candle.time;
-    const sl=active.direction==='BUY'?candle.low<=active.stopLoss:candle.high>=active.stopLoss;
-    // Once TP2 has already been reached, the trade is a WIN milestone.
-    // Keep it open until TP4 or SL; SL closes the entry without downgrading WIN.
-    if(sl && next.tp2Hit){
-      return{active:null,closed:closeTrade(next,'WIN',Number(next.realizedR||2),next.stopLoss,candle.time,'SL_AFTER_TP2_WIN'),notifications:[...notifications,{type:'SL_AFTER_TP2',interval:active.interval,trade:next,candleTime:candle.time}]};
-    }
-    if(sl){
-      next.realizedR=Number((Number(next.realizedR||0)-1).toFixed(2));
-      return{active:null,closed:closeTrade(next,'LOSS',next.realizedR,next.stopLoss,candle.time,'SL_BEFORE_TP2'),notifications:[...notifications,{type:'LOSS',interval:active.interval,trade:next,candleTime:candle.time}]};
-    }
-    const levels=[['TP1',1,'tp1','tp1Hit'],['TP2',2,'tp2','tp2Hit'],['TP3',3,'tp3','tp3Hit'],['TP4',4,'tp4','tp4Hit']];
+
+    // TP milestones are evaluated first. Once TP1 is reached, the stop becomes
+    // the entry price (break-even). TP2 is the WIN milestone, but the trade
+    // remains OPEN until TP4 or the break-even stop is hit.
+    const levels=[
+      ['TP1',1,'tp1','tp1Hit'],
+      ['TP2',2,'tp2','tp2Hit'],
+      ['TP3',3,'tp3','tp3Hit'],
+      ['TP4',4,'tp4','tp4Hit']
+    ];
+
     for(const [label,r,key,flag] of levels){
       const hit=active.direction==='BUY'?candle.high>=active[key]:candle.low<=active[key];
       if(hit&&!next[flag]){
         next[flag]=true;
         next.hitTPs.push(label);
-        // Realized R is the highest TP reached, not the sum of TP milestones.
-        next.realizedR=Number(Math.max(Number(next.realizedR||0), r).toFixed(2));
+        next.realizedR=Number(Math.max(Number(next.realizedR||0),r).toFixed(2));
         notifications.push({type:label,interval:active.interval,trade:next,candleTime:candle.time});
+
+        if(label==='TP1'){
+          // TP1 = break-even activation. No WIN yet.
+          next.stopLoss=Number(next.entry.toFixed(2));
+        }
+
         if(label==='TP2'){
-          // TP2 is the official WIN milestone, but the entry stays open.
+          // TP2 = WIN milestone. Keep the position open and keep SL at Entry.
           next.result='WIN';
           next.status='OPEN';
+          next.stopLoss=Number(next.entry.toFixed(2));
         }
-        if(label==='TP4')return{active:null,closed:closeTrade(next,'FULL TP HIT',next.realizedR,next.tp4,candle.time,'TP4 hit'),notifications};
+
+        if(label==='TP4'){
+          return{
+            active:null,
+            closed:closeTrade(next,'FULL TP HIT',4,next.tp4,candle.time,'TP4 hit'),
+            notifications
+          };
+        }
       }
     }
+
+    // Check the CURRENT stop after TP1/TP2 updates. Before TP1 this is the
+    // original SL; after TP1 it is Entry (break-even).
+    const currentStop=Number(next.stopLoss);
+    const sl=active.direction==='BUY'?candle.low<=currentStop:candle.high>=currentStop;
+    if(sl){
+      if(next.tp2Hit){
+        // TP2 already established WIN. If price returns to Entry, close as
+        // WIN/BE rather than LOSS. No additional profit is realized.
+        next.realizedR=0;
+        return{
+          active:null,
+          closed:closeTrade(next,'WIN',0,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP2'),
+          notifications:[...notifications,{type:'SL_AFTER_TP2',interval:active.interval,trade:next,candleTime:candle.time}]
+        };
+      }
+
+      next.realizedR=Number((Number(next.realizedR||0)-1).toFixed(2));
+      return{
+        active:null,
+        closed:closeTrade(next,'LOSS',next.realizedR,currentStop,candle.time,'SL_BEFORE_TP2'),
+        notifications:[...notifications,{type:'LOSS',interval:active.interval,trade:next,candleTime:candle.time}]
+      };
+    }
   }
+
   return{active:next,closed:null,notifications};
 }
 function tradeKey(t) {
