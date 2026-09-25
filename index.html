@@ -31,7 +31,7 @@
   <main class="shell dashboard">
     <section class="left-column">
       <article class="card signal-card">
-        <div class="eyebrow" id="signalLabel">5M CURRENT SIGNAL</div>
+        <div class="eyebrow" id="signalLabel">1M CURRENT SIGNAL</div>
         <div class="signal-line">
           <div>
             <h1 id="signal">WAIT</h1>
@@ -67,8 +67,7 @@
       <div class="toolbar">
         <div class="timeframe-buttons">
 
-          <button data-tf="5min">5M</button>
-          <button data-tf="1min">1M</button>
+          <button data-tf="1min" class="active">1M</button>
         </div>
         <button id="refresh" class="refresh-btn">↻ <span>Refresh</span></button>
       </div>
@@ -106,27 +105,38 @@
     </section>
 
     <aside class="right-column">
-      <article class="card info-card">
+      <article class="card info-card account-card">
         <div class="card-icon blue">◈</div>
-        <h2>About This Strategy</h2>
-        <p>Wajid Swing Liquidity is a price-action based system focused on liquidity sweeps, market structure and confirmed trade setups.</p>
-        <div class="feature-grid">
-          <span>◉ Liquidity Sweeps</span><span>⌁ Market Structure</span>
-          <span>◇ Risk Management</span><span>◌ No Repainting</span>
-          <span>▣ Server-Side Signals</span><span>◈ Real Market Data</span>
+        <h2>Daily Account Report</h2>
+        <p>1M account calculation · Starting balance $100 · Risk per trade $8</p>
+        <div class="account-grid">
+          <div><span>Trades</span><b id="dailyTrades">0</b></div>
+          <div><span>Profit</span><b id="dailyProfit" class="win">$0.00</b></div>
+          <div><span>Loss</span><b id="dailyLoss" class="loss">$0.00</b></div>
+          <div><span>Net</span><b id="dailyNet">$0.00</b></div>
+          <div><span>Balance</span><b id="dailyBalance">$100.00</b></div>
+        </div>
+        <div class="account-rules">
+          <span>SL before TP1 = −$8</span><span>TP1 → Entry SL = $0</span>
+          <span>TP2 → Entry SL = +$8</span><span>TP3 = +$16</span><span>TP4 = +$32</span>
         </div>
       </article>
 
-      <article class="card rules-card">
+      <article class="card rules-card account-card">
         <div class="card-icon purple">☷</div>
-        <h2>Trading Rules</h2>
-        <ol>
-          <li>Trend-aligned Order Block creates the active box</li>
-          <li>Price must return and enter/touch the active box</li>
-          <li>A closed reaction candle must reject the box in its direction</li>
-          <li>Only the first valid retest of each box creates a signal</li>
-          <li>TP1–TP4 use 1R / 2R / 3R / 4R from the reaction entry</li>
-        </ol>
+        <h2>Weekly Account Report</h2>
+        <p>Monday–Sunday · 1M signals only · Balance resets to $100 each week</p>
+        <div class="account-grid">
+          <div><span>Trades</span><b id="weeklyTrades">0</b></div>
+          <div><span>Profit</span><b id="weeklyProfit" class="win">$0.00</b></div>
+          <div><span>Loss</span><b id="weeklyLoss" class="loss">$0.00</b></div>
+          <div><span>Net</span><b id="weeklyNet">$0.00</b></div>
+          <div><span>Balance</span><b id="weeklyBalance">$100.00</b></div>
+        </div>
+        <div class="account-rules">
+          <span>TP2 is a milestone, not final WIN</span><span>TP2 → Entry SL = +1R</span>
+          <span>TP3 = +2R</span><span>TP4 = +4R</span>
+        </div>
       </article>
 
       <article class="card quote-card">
