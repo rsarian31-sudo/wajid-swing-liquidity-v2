@@ -3,6 +3,7 @@ let interval = '5min';
 let loading = false;
 let historyView = 'all';
 let historyData = null;
+let historyExpanded = false;
 
 const chart = LightweightCharts.createChart($('chart'), {
   width: $('chart').clientWidth,
@@ -87,10 +88,26 @@ function renderSummary(summary) {
 }
 function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
-  $('history').innerHTML = rows.length ? rows.map((t) => {
+  const visibleRows = historyExpanded ? rows : rows.slice(0, 5);
+  $('history').innerHTML = visibleRows.length ? visibleRows.map((t) => {
     const rc = resultClass(t.result), sc = t.direction === 'BUY' ? 'buy' : 'sell', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
     return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(t.result)}</td><td class="${rc}">${r > 0 ? '+' : ''}${fmt(r)}R</td></tr>`;
   }).join('') : '<tr><td colspan="11">No confirmed trades.</td></tr>';
+  const wrap = $('historyView');
+  const oldButton = wrap.querySelector('[data-history-more]');
+  if (oldButton) oldButton.remove();
+  if (rows.length > 5) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.historyMore = '1';
+    button.className = 'history-more';
+    button.textContent = historyExpanded ? 'See less' : 'See more';
+    button.addEventListener('click', () => {
+      historyExpanded = !historyExpanded;
+      renderTradeRows(rows);
+    });
+    wrap.appendChild(button);
+  }
 }
 function renderDailyHistory(trades) {
   const groups = new Map();
@@ -129,6 +146,7 @@ function renderHistory(history) {
 }
 function setHistoryView(view) {
   historyView = view;
+  historyExpanded = false;
   document.querySelectorAll('[data-history-view]').forEach((button) => button.classList.toggle('active', button.dataset.historyView === view));
   if (historyData) renderHistory(historyData);
 }
