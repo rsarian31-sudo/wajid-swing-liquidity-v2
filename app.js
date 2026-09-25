@@ -70,7 +70,7 @@ function resultClass(trade) {
   const status = String(trade?.status || '').toUpperCase();
   const result = String(trade?.result || '').toUpperCase();
   if (status !== 'CLOSED') return 'open';
-  if (result === 'WIN' || result === 'FULL TP HIT') return 'win';
+  if (result === 'WIN' || result === 'FULL TP HIT' || result === 'FINAL TP4 HIT' || result === 'TP2 HIT CLOSE' || result === 'TP3 HIT CLOSE') return 'win';
   return 'loss';
 }
 function calcStats(trades) {
