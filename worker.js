@@ -654,6 +654,7 @@ async function sendTelegram(env,event,subscribers){
   else return false;
 
   const messageIds={},failedChatIds=[];
+  let lastError=null;
   for(const subscriber of activeSubscribers){
     const chatId=String(subscriber.chatId);
     const payload={chat_id:chatId,text,reply_markup:telegramKeyboard()};
@@ -662,7 +663,6 @@ async function sendTelegram(env,event,subscribers){
       payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};
     }
     let delivered=false;
-    let lastError=null;
     for(let attempt=0;attempt<3;attempt++){
       try{
         const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{
