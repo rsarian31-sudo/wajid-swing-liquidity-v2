@@ -137,13 +137,17 @@ function renderDailyHistory(trades) {
     const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
       const r = Number(t.realizedR || 0);
       const rLabel = `${fmt(r)}R`;
+      const resultText = String(t.result || '').toUpperCase();
       const hits = Array.isArray(t.hitTPs) ? t.hitTPs.map(x => String(x).toUpperCase()) : [];
-      const tpCount = hits.filter(x => /^TP[1-4]$/.test(x)).length;
-      const tpCell = (name) => hits.includes(name) ? '<b class="win">HIT</b>' : '<span>—</span>';
+      let tpCount = hits.filter(x => /^TP[1-4]$/.test(x)).length;
+      if (!tpCount && (resultText === 'FULL TP HIT' || resultText === 'FINAL TP4 HIT')) tpCount = 4;
+      else if (!tpCount && resultText === 'TP3 HIT CLOSE') tpCount = 3;
+      else if (!tpCount && resultText === 'TP2 HIT CLOSE') tpCount = 2;
+      const tpCell = (n) => hits.includes('TP'+n) || tpCount >= n ? '<b class="win">HIT</b>' : '<span>—</span>';
       const tpSummary = tpCount ? `${tpCount} TP${tpCount === 1 ? '' : 's'} HIT` : 'No TP HIT';
-      return `<div class="daily-trade daily-trade-detail"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>—</span><span>—</span>${tpCell('TP1')}${tpCell('TP2')}${tpCell('TP3')}${tpCell('TP4')}<strong class="${resultClass(t)}">${esc(tpSummary)}</strong><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
+      return `<div class="daily-trade daily-trade-detail"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>—</span><span>—</span>${tpCell(1)}${tpCell(2)}${tpCell(3)}${tpCell(4)}<strong class="${resultClass(t)}">${esc(tpSummary)}</strong><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
     }).join('');
-    return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>`;
+    return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades-scroll"><div class="daily-trade daily-trade-header"><b>TIME</b><b>SIDE</b><b>ENTRY</b><b>SL</b><b>TP1</b><b>TP2</b><b>TP3</b><b>TP4</b><b>TP HIT</b><b>RESULT</b><b>R</b></div>${tradesHtml}</div></section>`;
   }).join('');
 
   $('historyView').innerHTML = html;
