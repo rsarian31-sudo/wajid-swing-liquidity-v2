@@ -368,7 +368,7 @@ async function processTelegramUpdate(update,env){
   else if(command==='/test'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ TEST is available to the bot owner only.');
     else if(existing?.active!==true)await telegramMessage(env,chatId,'⚪ Signal subscription is OFF. Send /start first.');
-    else{const testTrade={id:'telegram-test:'+Date.now(),interval:'1min',direction:'BUY',signalTime:Math.floor(Date.now()/1000),entry:4131.19,stopLoss:4129.19,tp1:4133.19,tp2:4135.19,tp3:4137.19,tp4:4139.19,probability:99,score:99,news:{bias:'TEST'}};const result=await sendTelegramWithQueue(env,{type:'SIGNAL',interval:'1min',trade:testTrade,probability:99,score:99},telegram);await telegramMessage(env,chatId,result?.messageIds?.[chatId]?'🧪 TEST SIGNAL SENT SUCCESSFULLY.\\n\\nTelegram signal delivery is working.':'⚠️ TEST SIGNAL FAILED.\\n\\nThe server queued the test for retry. Check the deployment logs.')}
+    else{const testTrade={id:'telegram-test:'+Date.now(),interval:'1min',direction:'BUY',signalTime:Math.floor(Date.now()/1000),entry:4131.19,stopLoss:4129.19,tp1:4133.19,tp2:4135.19,tp3:4137.19,tp4:4139.19,probability:99,score:99,news:{bias:'TEST'}};const result=await sendTelegramWithQueue(env,{type:'SIGNAL',interval:'1min',trade:testTrade,probability:99,score:99},telegram);await telegramMessage(env,chatId,result?.ok===true?'🧪 TEST SIGNAL SENT SUCCESSFULLY.\\n\\nThe test signal was sent to the Premium Channel.':'⚠️ TEST SIGNAL FAILED.\\n\\nThe server queued the test for retry. Check the deployment logs.')}
   }else if(command==='/broadcast'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ BROADCAST is available to the bot owner only.');
     else{const body=String(message.text||'').trim().replace(/^\/broadcast(?:@[^\s]+)?\s*/i,'').replace(/^\/bc(?:@[^\s]+)?\s*/i,'').trim();if(!body)await telegramMessage(env,chatId,'📢 Usage: /broadcast Your message here');else{const result=await sendTelegramBroadcast(env,body,telegram);await telegramMessage(env,chatId,'📢 BROADCAST COMPLETE.\\n\\nDelivered: '+result.delivered+'\\nFailed: '+result.failed+'\\nActive users: '+result.total);}}
@@ -731,7 +731,10 @@ async function retryPendingTelegram(env,telegram){
   for(const item of telegram.pending.slice(0,100)){
     if(!item?.event || !item?.chatId) continue;
     if(Number(item.nextAttemptAt||0)>now){remaining.push(item);continue;}
-    const subscriber=telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
+    const isChannel=String(item.chatId)===String(telegram.channelId||TELEGRAM_CHANNEL_ID);
+    const subscriber=isChannel
+      ? {chatId:String(telegram.channelId||TELEGRAM_CHANNEL_ID),active:true,source:'channel'}
+      : telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
     if(!subscriber || subscriber.active!==true) continue;
     const result=await sendTelegram(env,item.event,[subscriber]);
     if(result?.messageIds?.[String(item.chatId)]){
