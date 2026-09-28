@@ -134,7 +134,9 @@ function renderDailyHistory(trades) {
     const stats = calcStats(groups.get(key));
     const dayR = Number(stats.totalR || 0);
     const dayRLabel = `${dayR > 0 ? '+' : ''}${fmt(dayR)}R`;
-    const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
+    const dayTrades = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime));
+    const visibleTrades = historyExpanded ? dayTrades : dayTrades.slice(0, 2);
+    const tradesHtml = visibleTrades.map(t => {
       const r = Number(t.realizedR || 0);
       const rLabel = `${fmt(r)}R`;
       const resultText = String(t.result || '').toUpperCase();
@@ -151,7 +153,9 @@ function renderDailyHistory(trades) {
   }).join('');
 
   $('historyView').innerHTML = html;
-  if (keys.length > 1) {
+  const latestDay = keys[0];
+  const latestDayTrades = latestDay ? groups.get(latestDay) : [];
+  if (latestDayTrades.length > 2) {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'history-more';
