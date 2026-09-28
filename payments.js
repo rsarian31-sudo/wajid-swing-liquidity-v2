@@ -1,6 +1,7 @@
 const USDT_BSC = '0x55d398326f99059ff775485246999027b3197955';
 const RECEIVING_WALLET = '0xcb23069d5Ec57b21039D571aa805843D0127ce61'.toLowerCase();
 const BSC_RPC = 'https://bsc-dataseed.binance.org';
+const TELEGRAM_API = 'https://api.telegram.org/bot';
 const PLANS = { week:{id:'week',name:'1 Week',usd:5,days:7}, month:{id:'month',name:'1 Month',usd:10,days:30} };
 
 function json(data,status=200){return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}})}
@@ -70,10 +71,20 @@ async function verifyOrder(request,env){
     return json({ok:true,paid:true,plan:plan.name,amountUsdt:plan.usd,subscriptionExpiresAt:expires,telegramConnect:bot?'https://t.me/'+bot+'?start=connect_'+token:null});
   }catch(error){console.error('payment verification error',error?.message||String(error));return json({ok:false,error:'PAYMENT_VERIFICATION_FAILED'},502)}
 }
+async function telegramLink(request,env){
+  const user=await currentUser(request,env); if(!user)return json({ok:false,error:'UNAUTHORIZED'},401);
+  if(user.subscriptionStatus!=='active')return json({ok:false,error:'SUBSCRIPTION_REQUIRED'},403);
+  const token=await makeTelegramToken(env,user.id);
+  let bot=String(env.TELEGRAM_BOT_USERNAME||'').replace(/^@/,'');
+  if(!bot&&env.TELEGRAM_BOT_TOKEN){try{const r=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/getMe');const d=await r.json().catch(()=>null);bot=d?.result?.username||''}catch(_){}
+  }
+  return json({ok:true,telegramConnect:bot?'https://t.me/'+bot+'?start=connect_'+token:null});
+}
 export async function handlePaymentRequest(request,env){
   const path=new URL(request.url).pathname;
   if(request.method==='POST'&&path==='/api/payment/create')return createOrder(request,env);
   if(request.method==='POST'&&path==='/api/payment/verify')return verifyOrder(request,env);
+  if(request.method==='GET'&&path==='/api/payment/telegram')return telegramLink(request,env);
   if(request.method==='GET'&&path==='/api/payment/config')return json({ok:true,network:'BSC / BEP-20',token:'USDT',tokenContract:USDT_BSC,wallet:RECEIVING_WALLET,plans:Object.values(PLANS).map(x=>({id:x.id,name:x.name,usd:x.usd,days:x.days}))});
   return json({ok:false,error:'Not found'},404);
 }
