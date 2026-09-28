@@ -83,11 +83,29 @@ async function verifyOrder(request,env){
 async function telegramLink(request,env){
   const user=await currentUser(request,env); if(!user)return json({ok:false,error:'UNAUTHORIZED'},401);
   if(user.subscriptionStatus!=='active')return json({ok:false,error:'SUBSCRIPTION_REQUIRED'},403);
-  const token=await makeTelegramToken(env,user.id);
-  let bot=String(env.TELEGRAM_BOT_USERNAME||'').replace(/^@/,'');
-  if(!bot&&env.TELEGRAM_BOT_TOKEN){try{const r=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/getMe');const d=await r.json().catch(()=>null);bot=d?.result?.username||''}catch(_){}
+  if(!env.DB||!env.TELEGRAM_BOT_TOKEN)return json({ok:false,error:'TELEGRAM_NOT_CONFIGURED'},503);
+  try{
+    const expiresAt=Number(user.subscriptionExpiresAt||0);
+    const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/createChatInviteLink',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({
+        chat_id:'-1004402860410',
+        name:'Premium '+String(user.id).slice(0,8),
+        expire_date:Math.floor(expiresAt/1000),
+        member_limit:1
+      })
+    });
+    const data=await response.json().catch(()=>null);
+    const inviteLink=data?.ok===true?data?.result?.invite_link:null;
+    if(!inviteLink)return json({ok:false,error:data?.description||'CHANNEL_INVITE_FAILED'},502);
+    const now=Date.now();
+    await env.DB.prepare('INSERT INTO telegram_invites (id,user_id,invite_link,expires_at,created_at) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),String(user.id),inviteLink,expiresAt,now).run();
+    return json({ok:true,channelInvite:inviteLink,telegramConnect:inviteLink});
+  }catch(error){
+    console.error('telegram invite error',error?.message||String(error));
+    return json({ok:false,error:'CHANNEL_INVITE_FAILED'},502);
   }
-  return json({ok:true,telegramConnect:bot?'https://t.me/'+bot+'?start=connect_'+token:null});
 }
 export async function handlePaymentRequest(request,env){
   const path=new URL(request.url).pathname;
