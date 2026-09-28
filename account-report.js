@@ -60,13 +60,13 @@
 
   function render(rows, allClosed) {
     const rs = rows.map(accountR);
-    const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * 8, 0);
+    const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * 2, 0);
     const loss = rs.filter(r => r < 0).reduce((a, r) => a + r * 8, 0);
     const net = profit + loss;
     const selectedEnd = rows.reduce((max, t) => Math.max(max, Number(t.exitTime || t.signalTime || t.createdAt || 0)), 0);
     const cumulative = (Array.isArray(allClosed) ? allClosed : [])
       .filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= selectedEnd)
-      .reduce((sum, t) => sum + accountR(t) * 8, 0);
+      .reduce((sum, t) => sum + accountR(t) * 2, 0);
     const set = (id, value) => {
       const el = $(id);
       if (el) el.textContent = value;
