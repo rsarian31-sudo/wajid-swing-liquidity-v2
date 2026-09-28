@@ -43,6 +43,7 @@ export default {
     if (!env.TRADE_STATE) return;
     // Telegram is optional for the trading engine. If configured, keep the webhook healthy.
     if (env.TELEGRAM_BOT_TOKEN) await ensureTelegramWebhook(env);
+    if (env.TELEGRAM_BOT_TOKEN && env.DB && new Date().getUTCMinutes() % 15 === 0) await cleanupExpiredChannelMembers(env);
     const minute = new Date().getUTCMinutes();
     // Only poll higher timeframes when a new candle can actually close.
     // This reduces unnecessary market-data requests without changing signal logic.
@@ -294,7 +295,7 @@ function ensureTelegramState(state, env) {
   if (!Array.isArray(state.telegram.subscribers)) state.telegram.subscribers = [];
   if (!Array.isArray(state.telegram.pending)) state.telegram.pending = [];
   if (!Array.isArray(state.telegram.sentKeys)) state.telegram.sentKeys = [];
-  if (!String(state.telegram.channelId||'').trim()) state.telegram.channelId = TELEGRAM_CHANNEL_ID;
+  state.telegram.channelId = TELEGRAM_CHANNEL_ID;
   const configured = String(env.TELEGRAM_CHAT_ID || '').trim();
   if (configured) {
     const found = state.telegram.subscribers.find(s => String(s.chatId) === configured);
@@ -582,6 +583,33 @@ async function createPremiumChannelInvite(env,userId,expiresAt){
     const data=await response.json().catch(()=>null);
     return data?.ok===true?data?.result?.invite_link||null:null;
   }catch(_){return null}
+}
+async function cleanupExpiredChannelMembers(env){
+  if(!env?.DB||!env?.TELEGRAM_BOT_TOKEN||!env?.TRADE_STATE)return;
+  const stub=env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+  const state=await getState(stub);
+  const telegram=ensureTelegramState(state,env);
+  let changed=false;
+  for(const subscriber of (telegram.subscribers||[])){
+    if(!subscriber.active||!subscriber.userId||!subscriber.chatId||String(subscriber.chatId)===String(env.TELEGRAM_CHAT_ID||''))continue;
+    const row=await env.DB.prepare('SELECT role,subscription_status,subscription_expires_at FROM users WHERE id=? LIMIT 1').bind(String(subscriber.userId)).first();
+    if(row?.role==='admin')continue;
+    const active=row?.subscription_status==='active'&&Number(row?.subscription_expires_at||0)>Date.now();
+    if(active)continue;
+    try{
+      await telegramApiCall(env,'banChatMember',{chat_id:TELEGRAM_CHANNEL_ID,user_id:Number(subscriber.chatId),until_date:Math.floor(Date.now()/1000)+60,revoke_messages:false});
+      subscriber.active=false;
+      subscriber.channelRemovedAt=Date.now();
+      changed=true;
+    }catch(_){}
+  }
+  if(changed)await putState(stub,state);
+}
+async function telegramApiCall(env,method,payload){
+  const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  const data=await response.json().catch(()=>null);
+  if(!response.ok||data?.ok!==true)throw new Error(data?.description||('Telegram '+method+' failed'));
+  return data.result;
 }
 async function sendTelegramMessage(chatId,text,env){
   if(!env?.TELEGRAM_BOT_TOKEN)return false;
