@@ -13,6 +13,7 @@
 <style>
 .subscription-lock p{color:#a9bfd4;line-height:1.6}.subscription-lock button{margin-top:12px}
 .member-pill{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #24405a;background:#08131f;border-radius:999px;color:#9fb2c3;font-size:10px}.member-pill b{color:#39dfa0}.member-pill button{border:0;background:transparent;color:#ff7d8d;font-size:10px;font-weight:700;cursor:pointer}.pay-box{margin-top:14px;padding:14px;border:1px solid #1b3a54;border-radius:12px;background:#071521}.pay-plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay-plan{border:1px solid #24506d;background:#0a1b2a;color:#fff;border-radius:10px;padding:12px;cursor:pointer;text-align:left}.pay-plan b{display:block;font-size:15px}.pay-plan span{display:block;color:#8fa6b8;font-size:11px;margin-top:3px}.pay-details{margin-top:12px}.pay-address{word-break:break-all;font:600 11px ui-monospace,monospace;color:#b9d6e8;background:#06101a;padding:10px;border-radius:8px}.pay-input{width:100%;box-sizing:border-box;margin-top:10px;padding:11px;border:1px solid #28485f;background:#06101a;color:#fff;border-radius:8px}.pay-action{margin-top:10px;border:1px solid #1d4b6a;background:#128df2;color:#fff;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.pay-msg{margin-top:10px;color:#9fb2c3;font-size:11px}.telegram-connect{display:inline-block;margin-top:8px;padding:7px 10px;border-radius:8px;background:#0d2238;border:1px solid #2b7fff;color:#fff;text-decoration:none;font-size:10px;font-weight:800}
+.profile-card{overflow:hidden}.profile-head{display:flex;align-items:center;gap:12px;margin-bottom:14px}.profile-avatar{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#0788ff,#7d1cff);color:#fff;font-weight:900;font-size:17px;box-shadow:0 0 18px rgba(43,127,255,.28)}.profile-head h2{margin:0}.profile-head p{margin:4px 0 0;color:#8fa6b8;font-size:11px}.profile-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.profile-item{padding:10px 11px;border:1px solid #1b3a54;border-radius:9px;background:#071521;min-width:0}.profile-item span{display:block;color:#718ba0;font-size:9px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.profile-item b{display:block;color:#eaf6ff;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-badge{display:inline-flex;padding:4px 8px;border-radius:999px;font-size:9px;font-weight:900}.profile-badge.free{color:#ffd36a;background:rgba(255,193,7,.1);border:1px solid rgba(255,193,7,.3)}.profile-badge.premium{color:#39dfa0;background:rgba(57,223,160,.1);border:1px solid rgba(57,223,160,.3)}.profile-btn{border:1px solid #2b7fff;background:#0d2238;color:#fff;border-radius:8px;padding:6px 9px;font-size:10px;font-weight:800;cursor:pointer}.member-pill .profile-btn{color:#fff}
 .pay-box{margin-top:14px;padding:16px;border:1px solid #294c68;border-radius:14px;background:#071521;box-shadow:0 0 0 1px rgba(255,196,45,.08),0 12px 35px rgba(0,0,0,.22)}.pay-plans{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}.pay-plan{position:relative;min-height:142px;border:1px solid #2b7fff;background:linear-gradient(145deg,#0788ff,#1555d8);color:#fff;border-radius:16px;padding:18px 14px;cursor:pointer;text-align:center;box-shadow:0 0 20px rgba(0,136,255,.22);transition:.2s}.pay-plan.month{background:linear-gradient(145deg,#ff21c8,#7d1cff);border-color:#ff45da;box-shadow:0 0 20px rgba(255,33,200,.22)}.pay-plan:hover{transform:translateY(-2px);filter:brightness(1.08)}.pay-plan .crown{display:block;font-size:25px;line-height:1;margin-bottom:8px}.pay-plan .premium-text{display:block;font-size:20px;font-weight:900;letter-spacing:.2px;line-height:1.05;color:#fff!important;opacity:1!important;text-shadow:0 1px 2px rgba(0,0,0,.25)}.pay-plan .plan-days{display:inline-block;margin-top:14px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.5);font-size:13px;font-weight:900;color:#fff}.pay-details{margin-top:14px}.pay-qr-wrap{display:flex;flex-direction:column;align-items:center;gap:8px;margin:14px auto;padding:14px;width:min(220px,80%);background:#fff;border:2px solid #3b9cff;border-radius:14px;box-shadow:0 0 24px rgba(0,136,255,.2)}.pay-qr-wrap img{display:block;width:190px;height:190px;max-width:100%;image-rendering:auto}.pay-qr-label{color:#0b1a28;font-size:12px;font-weight:900;text-align:center}.pay-qr-note{color:#b9cfe1;font-size:11px;text-align:center;line-height:1.45;margin:4px 0 10px}.pay-address{word-break:break-all;font:700 11px ui-monospace,monospace;color:#d8efff;background:#06101a;padding:10px;border-radius:8px}.pay-input{width:100%;box-sizing:border-box;margin-top:10px;padding:11px;border:1px solid #39719a;background:#06101a;color:#fff;border-radius:8px}.pay-action{margin-top:10px;border:1px solid #55a8ff;background:#128df2;color:#fff;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.pay-msg{margin-top:10px;color:#b9cfe1;font-size:11px}.pay-msg b{color:#fff}.telegram-connect{display:inline-block;margin-top:8px;padding:7px 10px;border-radius:8px;background:#0d2238;border:1px solid #2b7fff;color:#fff;text-decoration:none;font-size:10px;font-weight:800}
 @media(max-width:700px){.member-pill span{display:none}.member-pill{padding:6px 8px}.pay-plan{min-height:132px;padding:16px 8px}.pay-plan .premium-text{font-size:17px}.pay-plan .plan-days{font-size:12px;padding:7px 9px}}
 </style></head>
@@ -37,10 +38,23 @@
     window.verifyPayment=async()=>{const o=window.WAJID_PAY_ORDER,tx=document.getElementById('txHash')?.value.trim(),msg=document.getElementById('payMsg');if(!o||!tx){if(msg)msg.textContent='Enter the transaction hash.';return}if(msg)msg.textContent='Verifying on BSC…';try{const r=await fetch('/api/payment/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:o.id,txHash:tx})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Payment verification failed');if(msg)msg.innerHTML='✅ Payment verified. Subscription is active. Reloading…';setTimeout(()=>location.reload(),1200)}catch(e){if(msg)msg.textContent='⚠️ '+String(e.message||e).replace(/[<>&"]/g,'')}};
     const c=document.createElement('div');
     c.className='member-pill';
-    const badge=free?'FREE':'SUBSCRIBED';
+    const badge=free?'FREE':'PREMIUM';
     const badgeClass=free?'':' style="color:#39dfa0"';
-    c.innerHTML='<span>'+String(d.user.name||d.user.email).replace(/[<>&"]/g,'')+'</span><b'+badgeClass+'>'+badge+'</b><button id="logout" type="button">Logout</button>';
+    c.innerHTML='<span>'+String(d.user.name||d.user.email).replace(/[<>&"]/g,'')+'</span><b'+badgeClass+'>'+badge+'</b><button class="profile-btn" id="profileBtn" type="button">Profile</button><button id="logout" type="button">Logout</button>';
     document.querySelector('.top-right').appendChild(c);
+    const profileName=document.getElementById('profileName');
+    const profileEmail=document.getElementById('profileEmail');
+    const profilePlan=document.getElementById('profilePlan');
+    const profileStatus=document.getElementById('profileStatus');
+    const profileExpiry=document.getElementById('profileExpiry');
+    const profileAvatar=document.getElementById('profileAvatar');
+    if(profileName)profileName.textContent=d.user.name||'—';
+    if(profileEmail)profileEmail.textContent=d.user.email||'—';
+    if(profileAvatar)profileAvatar.textContent=String(d.user.name||d.user.email||'U').trim().charAt(0).toUpperCase();
+    if(profilePlan)profilePlan.textContent=free?'FREE':'PREMIUM';
+    if(profileStatus){profileStatus.textContent=free?'Not subscribed':'Active';profileStatus.className='profile-badge '+(free?'free':'premium');}
+    if(profileExpiry)profileExpiry.textContent=free?'—':(d.user.subscriptionExpiresAt?new Date(d.user.subscriptionExpiresAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'Active');
+    document.getElementById('profileBtn').onclick=()=>document.getElementById('myProfile')?.scrollIntoView({behavior:'smooth',block:'center'});
     if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🤖 Connect Telegram';c.appendChild(a)}}catch(_){}} 
     document.getElementById('logout').onclick=async()=>{
       const button=document.getElementById('logout');
@@ -180,6 +194,23 @@
         <div class="perf-grid">
           <div><span>Starting Balance</span><b>$100.00</b></div>
           <div><span>Accumulated Balance</span><b id="perfBalance">$100.00</b></div>
+        </div>
+      </article>
+
+      <article class="card profile-card" id="myProfile">
+        <div class="profile-head">
+          <div class="profile-avatar" id="profileAvatar">U</div>
+          <div>
+            <h2>My Profile</h2>
+            <p>Your account and subscription details</p>
+          </div>
+        </div>
+        <div class="profile-grid">
+          <div class="profile-item"><span>Name</span><b id="profileName">—</b></div>
+          <div class="profile-item"><span>Gmail / Email</span><b id="profileEmail">—</b></div>
+          <div class="profile-item"><span>Plan</span><b id="profilePlan">—</b></div>
+          <div class="profile-item"><span>Status</span><b id="profileStatus" class="profile-badge">—</b></div>
+          <div class="profile-item" style="grid-column:1/-1"><span>Premium Until</span><b id="profileExpiry">—</b></div>
         </div>
       </article>
 
