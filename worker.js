@@ -3,6 +3,7 @@ import { onRequest as healthRequest } from './functions/api/health.js';
 import { CONFIG, analyze, buildHistory } from './src/strategy.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
+import { handleAuthRequest } from './auth.js';
 
 const INTERVALS = ['1min', '5min'];
 const SYMBOL = 'XAU/USD';
@@ -23,6 +24,7 @@ function isSignalSessionOpen(date = new Date()) {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    if (url.pathname.startsWith('/api/auth/')) return handleAuthRequest(request, env);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
     if (url.pathname === '/telegram/admin' && request.method === 'GET') return telegramAdminPage();
