@@ -26,7 +26,7 @@
     window.WAJID_USER=d.user;
     const free=d.user.subscriptionStatus!=='active';
     if(free){
-      document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.telegram-card').forEach(x=>x.style.display='none');
+      document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.calculator-card{margin-top:0}.calc-subtitle{color:#91a9bd;line-height:1.5;margin:0 0 14px}.calc-inputs{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}.calc-inputs label{display:flex;flex-direction:column;gap:6px;color:#9db4c8;font-size:11px}.calc-inputs input{width:100%;box-sizing:border-box;padding:11px 10px;border-radius:9px;border:1px solid #2d5977;background:#071521;color:#fff;font-weight:800;font-size:15px;outline:none}.calc-inputs input:focus{border-color:#55a8ff;box-shadow:0 0 0 2px rgba(85,168,255,.12)}.calc-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.calc-grid>div{padding:11px;border:1px solid #173c57;border-radius:10px;background:#071927}.calc-grid span{display:block;color:#7890a5;font-size:10px;margin-bottom:5px}.calc-grid b{font-size:16px;color:#f2f8ff}.calc-note{display:block;color:#70879b;line-height:1.5;margin-top:11px;font-size:10px}@media(max-width:700px){.calc-inputs{grid-template-columns:1fr 1fr}.calc-grid b{font-size:15px}}.telegram-card').forEach(x=>x.style.display='none');
       const c=document.createElement('article');
       c.className='card subscription-lock';
       c.innerHTML='<div class="accent-label">👑 MEMBERS AREA</div><h2>Unlock Live Signals</h2><p>Your performance history is available. Choose a subscription to unlock live Entry / SL / TP signals and Telegram access.</p><div class="pay-box"><b>USDT · BNB Smart Chain (BEP-20)</b><div class="pay-plans"><button class="pay-plan" type="button" onclick="startPayment(\'week\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Week · 7 Days</span></button><button class="pay-plan month" type="button" onclick="startPayment(\'month\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Month · 30 Days</span></button></div><div id="payDetails"></div></div>';
@@ -188,6 +188,25 @@
           <div><span>Starting Balance</span><b>$100.00</b></div>
           <div><span>Accumulated Balance</span><b id="perfBalance">$100.00</b></div>
         </div>
+      </article>
+
+      <article class="card calculator-card">
+        <div class="card-icon blue">◈</div>
+        <h2>Personal RR Calculator</h2>
+        <p class="calc-subtitle">Enter your own balance and see the same 1M trade results scaled to your account.</p>
+        <div class="calc-inputs">
+          <label><span>Your Balance (USDT)</span><input id="calcBalance" type="number" min="1" step="0.01" value="100" inputmode="decimal"></label>
+          <label><span>Risk per Trade (%)</span><input id="calcRisk" type="number" min="0.1" max="100" step="0.1" value="8" inputmode="decimal"></label>
+        </div>
+        <div class="calc-grid">
+          <div><span>1R Risk</span><b id="calcRiskUsd">$8.00</b></div>
+          <div><span>Today's Profit</span><b id="calcProfitUsd" class="win">$0.00</b></div>
+          <div><span>Today's Loss</span><b id="calcLossUsd" class="loss">$0.00</b></div>
+          <div><span>Today's Net</span><b id="calcNetUsd">$0.00</b></div>
+          <div><span>Projected Balance</span><b id="calcBalanceOut">$100.00</b></div>
+          <div><span>Trade Count</span><b id="calcTrades">0</b></div>
+        </div>
+        <small class="calc-note">Based on this day's closed 1M results and the site's RR model: SL = −1R · TP2/TP3 close = +1R · TP4 = +4R.</small>
       </article>
 
       <article class="card telegram-card">
