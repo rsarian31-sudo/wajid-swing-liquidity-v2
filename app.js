@@ -126,7 +126,11 @@ function renderDailyHistory(trades) {
   for (const t of trades || []) { const key = dayKey(t.signalTime); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(t); }
   const keys = [...groups.keys()].sort((a,b) => b.localeCompare(a));
   if (!keys.length) { $('historyView').innerHTML = '<div class="empty-history">No daily history available yet.</div>'; return; }
-  $('historyView').innerHTML = keys.map(key => {
+
+  // Keep the Daily History compact: show only the latest day by default.
+  // Older days are revealed with the See more button.
+  const visibleKeys = historyExpanded ? keys : keys.slice(0, 1);
+  const html = visibleKeys.map(key => {
     const stats = calcStats(groups.get(key));
     const dayR = Number(stats.totalR || 0);
     const dayRLabel = `${dayR > 0 ? '+' : ''}${fmt(dayR)}R`;
@@ -137,6 +141,19 @@ function renderDailyHistory(trades) {
     }).join('');
     return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>`;
   }).join('');
+
+  $('historyView').innerHTML = html;
+  if (keys.length > 1) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'history-more';
+    button.textContent = historyExpanded ? 'See less' : 'See more';
+    button.addEventListener('click', () => {
+      historyExpanded = !historyExpanded;
+      renderDailyHistory(trades);
+    });
+    $('historyView').appendChild(button);
+  }
 }
 function renderWeeklyHistory(trades) {
   const groups = new Map();
