@@ -116,7 +116,7 @@
     const el = $(id);
     if (!el) return;
     const saved = localStorage.getItem('wajid_'+id);
-    if (saved !== null) el.value = saved;
+    if (saved !== null) el.value = (id === 'calcRisk' && saved === '8') ? '2' : saved;
     else if (id === 'calcRisk') el.value = '2';
     el.addEventListener('input', () => {
       localStorage.setItem('wajid_'+id, el.value);
