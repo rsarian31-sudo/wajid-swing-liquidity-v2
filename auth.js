@@ -30,7 +30,8 @@ function publicUser(row){
 }
 
 function cookie(name,value,maxAge){
-  return name+'='+value+'; Max-Age='+maxAge+'; Path=/; HttpOnly; Secure; SameSite=Lax'
+  const expires = new Date(Date.now() + Math.max(0, Number(maxAge || 0)) * 1000).toUTCString();
+  return name+'='+value+'; Max-Age='+Math.max(0, Number(maxAge || 0))+'; Expires='+expires+'; Path=/; HttpOnly; Secure; SameSite=None'
 }
 
 function readCookie(request,name){
