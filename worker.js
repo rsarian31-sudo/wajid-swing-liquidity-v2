@@ -302,10 +302,29 @@ function ensureTelegramState(state, env) {
 }
 function telegramKeyboard(){return{keyboard:[[{text:'📊 Daily Stats'},{text:'📅 Weekly Report'}],[{text:'📈 All Stats'},{text:'🔄 Refresh Stats'}],[{text:'🟢 Status'},{text:'❓ Help'}]],resize_keyboard:true,is_persistent:true,one_time_keyboard:false}}
 function normalizeTelegramCommand(text){const value=String(text||'').trim().toLowerCase();if(value==='📊 daily stats'||value==='/daily'||value==='/today')return'/daily';if(value==='📅 weekly report'||value==='/weekly'||value==='/week')return'/weekly';if(value==='📈 all stats'||value==='🔄 refresh stats'||value==='/stats')return'/stats';if(value==='🟢 status'||value==='/status')return'/status';if(value==='🧪 test'||value==='/test')return'/test';if(value==='📢 broadcast'||value==='/broadcast'||value==='/bc')return'/broadcast';if(value==='❓ help'||value==='/help')return'/help';if(value==='/start'||value==='/subscribe')return'/start';if(value==='/stop'||value==='/unsubscribe')return'/stop';return value.split(/\s+/)[0].split('@')[0]}
-async function ensureTelegramWebhook(env){if(!env.TELEGRAM_BOT_TOKEN)return false;try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:TELEGRAM_WEBHOOK_URL,allowed_updates:['message'],drop_pending_updates:false})});const data=await response.json();return response.ok&&data?.ok===true}catch(_){return false}}
+async function ensureTelegramWebhook(env){if(!env.TELEGRAM_BOT_TOKEN)return false;try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:TELEGRAM_WEBHOOK_URL,allowed_updates:['message','channel_post'],drop_pending_updates:false})});const data=await response.json();return response.ok&&data?.ok===true}catch(_){return false}}
 async function telegramWebhook(request,env){if(!env.TELEGRAM_BOT_TOKEN||!env.TRADE_STATE)return new Response('Not configured',{status:503});try{await processTelegramUpdate(await request.json(),env);return new Response('OK',{status:200})}catch(_){return new Response('OK',{status:200})}}
 async function processTelegramUpdate(update,env){
-  const message=update?.message;if(!message||message.chat?.type!=='private'||!message.text)return;
+  const message=update?.message || update?.channel_post;
+  if(update?.channel_post){
+    const channel=update.channel_post;
+    if(channel?.chat?.type==='channel'){
+      const id=String(channel.chat.id);
+      const title=String(channel.chat.title||'');
+      console.log('Telegram channel detected',JSON.stringify({id,title}));
+      if(env.TRADE_STATE){
+        const stub=env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+        const state=await getState(stub);
+        state.telegram=ensureTelegramState(state,env);
+        state.telegram.channelId=id;
+        state.telegram.channelTitle=title;
+        state.telegram.channelDetectedAt=Date.now();
+        await saveState(stub,state);
+      }
+    }
+    return;
+  }
+  if(!message||message.chat?.type!=='private'||!message.text)return;
   const id=env.TRADE_STATE.idFromName('xauusd'),stub=env.TRADE_STATE.get(id),state=await getState(stub);
   const telegram=ensureTelegramState(state,env),command=normalizeTelegramCommand(message.text),chatId=String(message.chat.id);
   const adminChatId=String(env.TELEGRAM_CHAT_ID||'').trim(),isAdmin=!!adminChatId&&chatId===adminChatId;
