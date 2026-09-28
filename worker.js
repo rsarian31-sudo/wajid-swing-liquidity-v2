@@ -41,7 +41,7 @@ export default {
     const minute = new Date().getUTCMinutes();
     // Only poll higher timeframes when a new candle can actually close.
     // This reduces unnecessary market-data requests without changing signal logic.
-    const intervals = ['1min', '5min'];
+    const intervals = ['1min'];
         for (const interval of intervals) {
       const id = env.TRADE_STATE.idFromName('xauusd');
       const stateStub = env.TRADE_STATE.get(id);
