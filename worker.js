@@ -83,6 +83,37 @@ export default {
   }
 };
 
+async function processTelegramChannelMember(member,env){
+  if(!env?.DB||!env?.TRADE_STATE)return;
+  const chatId=String(member?.chat?.id||'');
+  if(chatId!==TELEGRAM_CHANNEL_ID)return;
+  const inviteLink=String(member?.invite_link?.invite_link||'').trim();
+  const telegramUserId=String(member?.new_chat_member?.user?.id||member?.old_chat_member?.user?.id||'').trim();
+  if(!inviteLink||!telegramUserId)return;
+  const row=await env.DB.prepare('SELECT id,user_id,expires_at FROM telegram_invites WHERE invite_link=? LIMIT 1').bind(inviteLink).first();
+  if(!row)return;
+  const status=String(member?.new_chat_member?.status||'');
+  const joined=['member','administrator','creator'].includes(status);
+  const stub=env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+  const state=await getState(stub);
+  const telegram=ensureTelegramState(state,env);
+  const existing=telegram.subscribers.find(s=>String(s.chatId)===telegramUserId);
+  const base={chatId:telegramUserId,userId:String(row.user_id),updatedAt:Date.now(),source:'premium-channel'};
+  if(joined){
+    if(existing)Object.assign(existing,base,{active:true,channelJoinedAt:Date.now()});
+    else telegram.subscribers.push({...base,active:true,channelJoinedAt:Date.now()});
+    await env.DB.prepare('UPDATE telegram_invites SET joined_chat_id=?,joined_at=? WHERE id=?').bind(telegramUserId,Date.now(),String(row.id)).run();
+  }else{
+    if(existing&&String(existing.userId||'')===String(row.user_id)){
+      existing.active=false;
+      existing.updatedAt=Date.now();
+      existing.channelRemovedAt=Date.now();
+    }
+  }
+  state.telegram=telegram;
+  await putState(stub,state);
+}
+
 async function telegramUsers(request, env) {
   const configured = String(env.ADMIN_TOKEN || '').trim();
   if (!configured) return Response.json({ error: 'ADMIN_TOKEN is not configured' }, { status: 503 });
@@ -305,9 +336,13 @@ function ensureTelegramState(state, env) {
 }
 function telegramKeyboard(){return{keyboard:[[{text:'📊 Daily Stats'},{text:'📅 Weekly Report'}],[{text:'📈 All Stats'},{text:'🔄 Refresh Stats'}],[{text:'🟢 Status'},{text:'❓ Help'}]],resize_keyboard:true,is_persistent:true,one_time_keyboard:false}}
 function normalizeTelegramCommand(text){const value=String(text||'').trim().toLowerCase();if(value==='📊 daily stats'||value==='/daily'||value==='/today')return'/daily';if(value==='📅 weekly report'||value==='/weekly'||value==='/week')return'/weekly';if(value==='📈 all stats'||value==='🔄 refresh stats'||value==='/stats')return'/stats';if(value==='🟢 status'||value==='/status')return'/status';if(value==='🧪 test'||value==='/test')return'/test';if(value==='📢 broadcast'||value==='/broadcast'||value==='/bc')return'/broadcast';if(value==='❓ help'||value==='/help')return'/help';if(value==='/start'||value==='/subscribe')return'/start';if(value==='/stop'||value==='/unsubscribe')return'/stop';return value.split(/\s+/)[0].split('@')[0]}
-async function ensureTelegramWebhook(env){if(!env.TELEGRAM_BOT_TOKEN)return false;try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:TELEGRAM_WEBHOOK_URL,allowed_updates:['message','channel_post'],drop_pending_updates:false})});const data=await response.json();return response.ok&&data?.ok===true}catch(_){return false}}
+async function ensureTelegramWebhook(env){if(!env.TELEGRAM_BOT_TOKEN)return false;try{const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/setWebhook`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:TELEGRAM_WEBHOOK_URL,allowed_updates:['message','channel_post','chat_member'],drop_pending_updates:false})});const data=await response.json();return response.ok&&data?.ok===true}catch(_){return false}}
 async function telegramWebhook(request,env){if(!env.TELEGRAM_BOT_TOKEN||!env.TRADE_STATE)return new Response('Not configured',{status:503});try{await processTelegramUpdate(await request.json(),env);return new Response('OK',{status:200})}catch(_){return new Response('OK',{status:200})}}
 async function processTelegramUpdate(update,env){
+  if(update?.chat_member){
+    await processTelegramChannelMember(update.chat_member,env);
+    return;
+  }
   const message=update?.message || update?.channel_post;
   if(update?.channel_post){
     const channel=update.channel_post;
