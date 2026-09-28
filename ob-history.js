@@ -51,34 +51,75 @@
     legend.className = 'wajid-chart-legend';
     legend.innerHTML = `<span>XAU/USD</span><span class="muted" data-wj-legend="tf">1M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
     chart.appendChild(legend);
+    const resizeChart = () => {
+      const c = window.__wajidChart;
+      if (!c) return;
+      requestAnimationFrame(() => {
+        try {
+          c.applyOptions({ width: Math.max(320, chart.clientWidth), height: Math.max(280, chart.clientHeight) });
+          c.timeScale().fitContent();
+          positionBoxes(c);
+        } catch (_) {}
+      });
+    };
+
     tools.addEventListener('click', (e) => {
       const button = e.target.closest('button[data-wj]');
       if (!button) return;
       const action = button.dataset.wj;
       const c = window.__wajidChart;
       if (!c) return;
-      if (action === 'fit') c.timeScale().fitContent();
-      if (action === 'reset') { c.priceScale('right').applyOptions({ autoScale: true }); c.timeScale().fitContent(); }
+
+      if (action === 'fit') {
+        c.timeScale().fitContent();
+        c.priceScale('right').applyOptions({ autoScale: true });
+        resizeChart();
+        button.classList.add('active');
+        setTimeout(() => button.classList.remove('active'), 350);
+      }
+
+      if (action === 'reset') {
+        c.priceScale('right').applyOptions({ autoScale: true });
+        c.timeScale().resetTimeScale();
+        c.timeScale().fitContent();
+        resizeChart();
+        button.classList.add('active');
+        setTimeout(() => button.classList.remove('active'), 350);
+      }
+
       if (action === 'cross') {
         const active = button.classList.toggle('active');
-        c.applyOptions({ crosshair: { mode: active ? window.LightweightCharts.CrosshairMode.Normal : window.LightweightCharts.CrosshairMode.Hidden } });
+        const mode = window.LightweightCharts?.CrosshairMode;
+        c.applyOptions({ crosshair: { mode: active && mode ? mode.Normal : (mode ? mode.Hidden : 0) } });
       }
+
       if (action === 'ob') {
         state.hidden = !state.hidden;
         button.classList.toggle('active', !state.hidden);
         state.series.forEach(s => { try { s.applyOptions({ visible: !state.hidden }); } catch (_) {} });
         state.zones.forEach(z => z.classList.toggle('hidden', state.hidden));
+        positionBoxes(c);
       }
+
       if (action === 'full') {
-        const card = chart.closest('.chart-card');
+        const card = chart.closest('.chart-card') || chart.parentElement;
         if (!card) return;
-        card.classList.toggle('wajid-chart-fullscreen');
-        button.classList.toggle('active', card.classList.contains('wajid-chart-fullscreen'));
-        setTimeout(() => c.applyOptions({width: chart.clientWidth, height: chart.clientHeight}), 80);
+        const isFull = card.classList.toggle('wajid-chart-fullscreen');
+        button.classList.toggle('active', isFull);
+        document.body.style.overflow = isFull ? 'hidden' : '';
+        setTimeout(resizeChart, 120);
       }
     });
+
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') document.querySelector('.wajid-chart-fullscreen')?.classList.remove('wajid-chart-fullscreen');
+      if (e.key === 'Escape') {
+        const card = document.querySelector('.wajid-chart-fullscreen');
+        if (card) {
+          card.classList.remove('wajid-chart-fullscreen');
+          document.body.style.overflow = '';
+          resizeChart();
+        }
+      }
     });
   }
 
