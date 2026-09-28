@@ -136,8 +136,12 @@ function renderDailyHistory(trades) {
     const dayRLabel = `${dayR > 0 ? '+' : ''}${fmt(dayR)}R`;
     const tradesHtml = groups.get(key).slice().sort((a,b)=>Number(b.signalTime)-Number(a.signalTime)).map(t => {
       const r = Number(t.realizedR || 0);
-      const rLabel = `${r > 0 ? '+' : ''}${fmt(r)}R`;
-      return `<div class="daily-trade"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>${fmt(t.entry)}</span><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
+      const rLabel = `${fmt(r)}R`;
+      const hits = Array.isArray(t.hitTPs) ? t.hitTPs.map(x => String(x).toUpperCase()) : [];
+      const tpCount = hits.filter(x => /^TP[1-4]$/.test(x)).length;
+      const tpCell = (name) => hits.includes(name) ? '<b class="win">HIT</b>' : '<span>—</span>';
+      const tpSummary = tpCount ? `${tpCount} TP${tpCount === 1 ? '' : 's'} HIT` : 'No TP HIT';
+      return `<div class="daily-trade daily-trade-detail"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>—</span><span>—</span>${tpCell('TP1')}${tpCell('TP2')}${tpCell('TP3')}${tpCell('TP4')}<strong class="${resultClass(t)}">${esc(tpSummary)}</strong><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
     }).join('');
     return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades">${tradesHtml}</div></section>`;
   }).join('');
