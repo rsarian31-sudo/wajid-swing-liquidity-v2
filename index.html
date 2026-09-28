@@ -40,6 +40,27 @@
     const badgeClass=free?'':' style="color:#39dfa0"';
     c.innerHTML='<span>'+String(d.user.name||d.user.email).replace(/[<>&"]/g,'')+'</span><b'+badgeClass+'>'+badge+'</b><button class="profile-btn" id="profileBtn" type="button">Profile</button><button id="logout" type="button">Logout</button>';
     document.querySelector('.top-right').appendChild(c);
+    document.getElementById('profileBtn').onclick=()=>{
+      let pop=document.getElementById('profilePop');
+      if(!pop){
+        pop=document.createElement('div');
+        pop.id='profilePop';
+        pop.className='profile-pop';
+        pop.innerHTML='<button class="profile-close" id="profileClose" type="button">×</button><div class="profile-pop-head"><div class="profile-avatar" id="popAvatar">U</div><div><h3 id="popName">—</h3><div class="email" id="popEmail">—</div></div></div><div class="profile-pop-grid"><div class="profile-pop-item"><span>Plan</span><b id="popPlan">—</b></div><div class="profile-pop-item"><span>Status</span><b id="popStatus">—</b></div><div class="profile-pop-item" style="grid-column:1/-1"><span>Premium Until</span><b id="popExpiry">—</b></div></div><button class="profile-logout" id="popLogout" type="button">Log out</button>';
+        document.body.appendChild(pop);
+        pop.querySelector('#profileClose').onclick=()=>pop.classList.remove('open');
+        pop.querySelector('#popLogout').onclick=async()=>{const b=pop.querySelector('#popLogout');b.disabled=true;b.textContent='Logging out…';try{await fetch('/api/auth/logout',{method:'POST'});}finally{location.replace('/login.html');}};
+      }
+      pop.querySelector('#popAvatar').textContent=String(d.user.name||d.user.email||'U').trim().charAt(0).toUpperCase();
+      pop.querySelector('#popName').textContent=d.user.name||'—';
+      pop.querySelector('#popEmail').textContent=d.user.email||'—';
+      pop.querySelector('#popPlan').textContent=free?'FREE':'PREMIUM';
+      pop.querySelector('#popPlan').className=free?'free':'premium';
+      pop.querySelector('#popStatus').textContent=free?'Not subscribed':'Active';
+      pop.querySelector('#popStatus').className=free?'free':'premium';
+      pop.querySelector('#popExpiry').textContent=free?'—':(d.user.subscriptionExpiresAt?new Date(d.user.subscriptionExpiresAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'Active');
+      pop.classList.toggle('open');
+    };
     if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🤖 Connect Telegram';c.appendChild(a)}}catch(_){}} 
     document.getElementById('logout').onclick=async()=>{
       const button=document.getElementById('logout');
