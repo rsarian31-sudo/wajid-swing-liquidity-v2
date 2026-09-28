@@ -294,6 +294,7 @@ function ensureTelegramState(state, env) {
   if (!Array.isArray(state.telegram.subscribers)) state.telegram.subscribers = [];
   if (!Array.isArray(state.telegram.pending)) state.telegram.pending = [];
   if (!Array.isArray(state.telegram.sentKeys)) state.telegram.sentKeys = [];
+  if (!String(state.telegram.channelId||'').trim()) state.telegram.channelId = TELEGRAM_CHANNEL_ID;
   const configured = String(env.TELEGRAM_CHAT_ID || '').trim();
   if (configured) {
     const found = state.telegram.subscribers.find(s => String(s.chatId) === configured);
@@ -347,7 +348,8 @@ async function processTelegramUpdate(update,env){
       if(existing)Object.assign(existing,base,{active:true,userId:String(linkedUser.id)});
       else telegram.subscribers.push({...base,active:true,userId:String(linkedUser.id)});
       await env.DB.prepare('UPDATE users SET telegram_connect_token=NULL,telegram_connect_expires_at=0,updated_at=? WHERE id=?').bind(Date.now(),String(linkedUser.id)).run();
-      await telegramMessage(env,chatId,'✅ Telegram connected successfully.\\n\\nYour active subscription is linked to this Telegram account.\\nYou will receive XAU/USD signals while your subscription remains active.');
+      const channelInvite=await createPremiumChannelInvite(env,String(linkedUser.id),Number(linkedUser.subscription_expires_at));
+      await telegramMessage(env,chatId,channelInvite?'✅ Telegram connected successfully.\\n\\n🔐 Premium Channel Access:\\n'+channelInvite+'\\n\\nYou will receive XAU/USD signals in the private channel while your subscription remains active.':'✅ Telegram connected successfully.\\n\\nYour subscription is active, but the channel invite could not be generated yet. Please contact support.');
       changed=true;
     }else if(isAdmin){
       if(existing)Object.assign(existing,base,{active:true});
