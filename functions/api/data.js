@@ -1,9 +1,10 @@
 import { CONFIG, analyze, buildHistory } from '../../src/strategy.js';
+import { getAuthUser, hasActiveSubscription } from '../../auth.js';
 const ALLOWED=new Set(['1min','5min']);
 const FEED_CACHE=new Map();
 const FEED_CACHE_TTL_MS=15000;
 
-export async function onRequest({request,env,waitUntil}){
+export async function onRequest({request,env,waitUntil}){\n  const user=await getAuthUser(request,env);\n  if(!user)return json({success:false,error:'LOGIN_REQUIRED'},401);\n  const subscriber=hasActiveSubscription(user);
   if(request.method!=='GET')return json({success:false,error:'Method not allowed'},405);
   try{
     const u=new URL(request.url),interval=ALLOWED.has(u.searchParams.get('interval'))?u.searchParams.get('interval'):'1min';
@@ -139,6 +140,10 @@ export async function onRequest({request,env,waitUntil}){
       return {daily:make(daily,'DAILY'),weekly:make(weekly,'WEEKLY')};
     }
     const accountReport=buildAccountReport(trades);
+    if(!subscriber){
+      const publicTrades=trades.map(t=>({id:t.id,interval:t.interval,signalTime:t.signalTime,status:t.status||'CLOSED',result:t.status==='CLOSED'?t.result:'OPEN',realizedR:Number(t.realizedR||0),hitTPs:Array.isArray(t.hitTPs)?t.hitTPs:[]}));
+      return json({success:true,member:{subscriptionStatus:'inactive'},strategy:{id:'volume-ob-retest',name:'Wajid Swing Liquidity',symbol:'XAU/USD'},market:{symbol:'XAU/USD'},signal:{direction:'LOCKED'},tradePlan:null,activeTrade:null,activeTrades:[],candles:[],swings:{highs:[],lows:[]},liquidity:{levels:[],sweeps:[]},diagnostics:{},volumeOB:null,history:{summary,trades:publicTrades},accountReport});
+    }
     return json({success:true,strategy:{id:'volume-ob-retest',name:'Volume OB · Box Retest Reaction',symbol:'XAU/USD',interval,parameters:{...CONFIG,intervalConfig:interval==='1min'?{requireRetest:false,minReactionBody:CONFIG.minReactionBody,minVolumePercent:CONFIG.minVolumePercent} :{requireRetest:true,minReactionBody:0.45,minVolumePercent:58}}},dataProvider:{name:provider,fallback},market:{symbol:'XAU/USD',interval,price:candles.at(-1)?.close,lastCandleTime:candles.at(-1)?.time,candleCount:candles.length,analysisCandleCount:closed.length},candles,swings:analysis.swings,liquidity:{levels:[],sweeps:[]},signal:analysis.signal,tradePlan:activePlan,activeTrade:active,activeTrades,diagnostics:{...(analysis.diagnostics||{}),feed:feedDiagnostics},news:null,volumeOB:analysis.volumeOB,history:{summary,trades},accountReport});
   }catch(e){return json({success:false,error:e?.message||'Market data error'},503)}
 }
