@@ -63,19 +63,27 @@ export function hasActiveSubscription(user){return user?.subscriptionStatus==='a
 export async function handleAuthRequest(request,env){
   if(!env.DB)return json({ok:false,error:'AUTH_DATABASE_NOT_CONFIGURED'},503);
   const action=new URL(request.url).pathname.replace('/api/auth/','').replace(/\/$/,'')||'me';
+  let stage='start';
   try{
     if(action==='me'&&request.method==='GET'){
+      stage='me_lookup';
       const user=await currentUser(request,env);return user?json({ok:true,user}):json({ok:false,error:'UNAUTHORIZED'},401);
     }
     if(action==='register'&&request.method==='POST'){
+      stage='register_parse';
       const b=await request.json().catch(()=>({})),name=String(b.name||'').trim(),email=normalizeEmail(b.email),password=String(b.password||'');
       if(name.length<2||name.length>80)return json({ok:false,error:'Enter a valid name.'},400);
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||email.length>160)return json({ok:false,error:'Enter a valid email.'},400);
       if(password.length<8||password.length>128)return json({ok:false,error:'Password must be 8–128 characters.'},400);
+      stage='register_email_check';
       if(await env.DB.prepare('SELECT id FROM users WHERE email=? LIMIT 1').bind(email).first())return json({ok:false,error:'An account with this email already exists.'},409);
+      stage='register_password_hash';
       const id=crypto.randomUUID(),now=Date.now(),passwordHash=await hashPassword(password);
+      stage='register_user_insert';
       await env.DB.prepare('INSERT INTO users (id,name,email,password_hash,role,status,subscription_status,subscription_expires_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(id,name,email,passwordHash,'user','active','inactive',0,now,now).run();
+      stage='register_session_create';
       const s=await createSession(env,id);
+      stage='register_success';
       return json({ok:true,user:{id,name,email,role:'user',subscriptionStatus:'inactive',subscriptionExpiresAt:null}},201,{'Set-Cookie':cookie(SESSION_COOKIE,s.token,SESSION_DAYS*86400)});
     }
     if(action==='login'&&request.method==='POST'){
@@ -92,5 +100,8 @@ export async function handleAuthRequest(request,env){
       return json({ok:true},200,{'Set-Cookie':cookie(SESSION_COOKIE,'',0)});
     }
     return json({ok:false,error:'Not found'},404);
-  }catch(error){console.error('auth error',error?.message||error);return json({ok:false,error:'Authentication service error.'},500)}
+  }catch(error){
+    console.error('auth error',JSON.stringify({action,stage,message:error?.message||String(error),name:error?.name||''}));
+    return json({ok:false,error:'Authentication service error.',stage},500);
+  }
 }
