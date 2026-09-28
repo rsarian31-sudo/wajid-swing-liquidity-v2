@@ -337,7 +337,7 @@ export function analyze(candles = [], options = {}) {
   } : {
     value:'WAIT', direction:'WAIT', probability:0, score:0, time:null, price:latest.close,
     confirmationTime:null, entryTime:null,
-    rejection: latestZone ? 'WAITING_FOR_ORDER_BLOCK' : 'NO_ACTIVE_ORDER_BLOCK'
+    rejection: latestZone ? '💪 WAITING_FOR_BEST_SET-UP' : 'NO_ACTIVE_ORDER_BLOCK'
   };
 
   const swings = {
@@ -359,7 +359,7 @@ export function analyze(candles = [], options = {}) {
       latestSwingHigh:swings.highs.at(-1)?.price??null,
       latestSwingLow:swings.lows.at(-1)?.price??null,
       latestSweep:null,
-      confirmation:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION':'ORDER_BLOCK_CREATED'):'WAITING_FOR_ORDER_BLOCK',
+      confirmation:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION':'ORDER_BLOCK_CREATED'):'💪 WAITING_FOR_BEST_SET-UP',
       volumeAvailable:candles.some(c=>n(c.volume,0)>0),
       volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= cfg.minVolumePercent : false,
       riskFilter:{passed:!!plan,rejected:!!latestSignal&&!plan,reason:plan?null:(latestSignal?'SL_DISTANCE_OUT_OF_RANGE':'WAIT')},
