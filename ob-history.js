@@ -31,8 +31,7 @@
       .wajid-ob-zone{position:absolute;z-index:4;border:1px dashed;pointer-events:none;opacity:.12;border-radius:2px}
       .wajid-ob-zone.bull{background:#00ffcc;border-color:#00ffcc}.wajid-ob-zone.bear{background:#ff007f;border-color:#ff007f}
       .wajid-ob-zone.hidden{display:none}
-      .wajid-chart-fullscreen{position:fixed!important;inset:10px!important;width:auto!important;height:auto!important;z-index:99999!important;background:#030810!important;padding:14px!important;border-radius:12px!important}
-      .wajid-chart-fullscreen #chart{height:calc(100vh - 90px)!important}
+      .wajid-chart-fullscreen{position:fixed!important;left:8px!important;right:8px!important;top:8px!important;bottom:8px!important;width:auto!important;height:auto!important;z-index:2147483640!important;background:#030810!important;padding:14px!important;border-radius:12px!important;overflow:auto!important}.wajid-chart-fullscreen #chart{height:calc(100vh - 92px)!important}.wajid-chart-fullscreen .wajid-chart-tools{position:sticky;top:0;z-index:20}.wajid-chart-fullscreen .panel-title{display:none}
       @media(max-width:600px){.wajid-chart-tools{overflow-x:auto;flex-wrap:nowrap}.wajid-chart-tools .tool-label{display:none}.wajid-chart-legend{font-size:9px;max-width:calc(100% - 20px)}}`;
     document.head.appendChild(style);
   }
@@ -51,6 +50,20 @@
     legend.className = 'wajid-chart-legend';
     legend.innerHTML = `<span>XAU/USD</span><span class="muted" data-wj-legend="tf">1M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
     chart.appendChild(legend);
+    const showToast = (message) => {
+      let toast = document.getElementById('wajid-chart-toast');
+      if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'wajid-chart-toast';
+        toast.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:2147483647;padding:9px 14px;border:1px solid #24577a;border-radius:9px;background:#071522;color:#eaf4fb;font:600 12px Inter,system-ui,sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.4);pointer-events:none;opacity:0;transition:opacity .15s';
+        document.body.appendChild(toast);
+      }
+      toast.textContent = message;
+      toast.style.opacity = '1';
+      clearTimeout(toast.__timer);
+      toast.__timer = setTimeout(() => { toast.style.opacity = '0'; }, 900);
+    };
+
     const resizeChart = () => {
       const c = window.__wajidChart;
       if (!c) return;
@@ -75,6 +88,7 @@
         c.priceScale('right').applyOptions({ autoScale: true });
         resizeChart();
         button.classList.add('active');
+        showToast('Chart fitted');
         setTimeout(() => button.classList.remove('active'), 350);
       }
 
@@ -84,6 +98,7 @@
         c.timeScale().fitContent();
         resizeChart();
         button.classList.add('active');
+        showToast('Chart reset');
         setTimeout(() => button.classList.remove('active'), 350);
       }
 
@@ -91,6 +106,7 @@
         const active = button.classList.toggle('active');
         const mode = window.LightweightCharts?.CrosshairMode;
         c.applyOptions({ crosshair: { mode: active && mode ? mode.Normal : (mode ? mode.Hidden : 0) } });
+        showToast(active ? 'Crosshair ON' : 'Crosshair OFF');
       }
 
       if (action === 'ob') {
@@ -99,6 +115,7 @@
         state.series.forEach(s => { try { s.applyOptions({ visible: !state.hidden }); } catch (_) {} });
         state.zones.forEach(z => z.classList.toggle('hidden', state.hidden));
         positionBoxes(c);
+        showToast(state.hidden ? 'OB History hidden' : 'OB History shown');
       }
 
       if (action === 'full') {
@@ -106,8 +123,10 @@
         if (!card) return;
         const isFull = card.classList.toggle('wajid-chart-fullscreen');
         button.classList.toggle('active', isFull);
+        document.body.classList.toggle('wajid-fullscreen-active', isFull);
         document.body.style.overflow = isFull ? 'hidden' : '';
-        setTimeout(resizeChart, 120);
+        showToast(isFull ? 'Fullscreen ON' : 'Fullscreen OFF');
+        setTimeout(resizeChart, 180);
       }
     });
 
@@ -116,6 +135,7 @@
         const card = document.querySelector('.wajid-chart-fullscreen');
         if (card) {
           card.classList.remove('wajid-chart-fullscreen');
+          document.body.classList.remove('wajid-fullscreen-active');
           document.body.style.overflow = '';
           resizeChart();
         }
