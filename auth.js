@@ -161,7 +161,7 @@ export async function getAuthUser(request,env){
 }
 
 export function hasActiveSubscription(user){
-  return user?.subscriptionStatus==='active';
+  return user?.role==='admin' || user?.subscriptionStatus==='active';
 }
 
 export async function handleAuthRequest(request,env){
