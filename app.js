@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let interval = '1min';
 let loading = false;
-let historyView = 'all';
+let historyView = 'daily';
 let historyData = null;
 let historyExpanded = false;
 
