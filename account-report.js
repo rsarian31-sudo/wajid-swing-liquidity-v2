@@ -39,7 +39,7 @@
     let balance = Number(balanceEl.value);
     let riskPct = Number(riskEl.value);
     if (!Number.isFinite(balance) || balance <= 0) balance = 100;
-    if (!Number.isFinite(riskPct) || riskPct <= 0) riskPct = 8;
+    if (!Number.isFinite(riskPct) || riskPct <= 0) riskPct = 2;
     riskPct = Math.min(100, riskPct);
     const oneR = balance * riskPct / 100;
     const rs = rows.map(accountR);
@@ -117,6 +117,7 @@
     if (!el) return;
     const saved = localStorage.getItem('wajid_'+id);
     if (saved !== null) el.value = saved;
+    else if (id === 'calcRisk') el.value = '2';
     el.addEventListener('input', () => {
       localStorage.setItem('wajid_'+id, el.value);
       const dateInput = $('dailyDate');
