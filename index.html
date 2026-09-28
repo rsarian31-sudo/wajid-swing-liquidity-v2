@@ -19,7 +19,7 @@
 (async()=>{
   try{
     const r=await fetch('/api/auth/me',{cache:'no-store'});
-    if(!r.ok){location.replace('/login.html');return}
+    if(r.status===503){document.body.style.visibility='visible';return} if(!r.ok){location.replace('/login.html');return}
     const d=await r.json();
     document.body.style.visibility='visible';
     window.WAJID_USER=d.user;
