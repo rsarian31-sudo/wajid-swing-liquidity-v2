@@ -32,7 +32,7 @@
     const d=await r.json();
     document.body.style.visibility='visible';
     window.WAJID_USER=d.user;
-    const free=d.user.subscriptionStatus!=='active';
+    const free=d.user.role!=='admin' && d.user.subscriptionStatus!=='active';
     if(free){
       document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.telegram-card').forEach(x=>x.style.display='none');
       const c=document.createElement('article');
