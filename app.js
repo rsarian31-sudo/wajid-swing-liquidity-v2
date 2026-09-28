@@ -94,8 +94,7 @@ function renderSummary(summary) {
     ['Trades', summary.totalTrades ?? summary.signals ?? 0, ''], ['Win', summary.wins ?? 0, 'win'], ['Loss', summary.losses ?? 0, 'loss'],
     ['Win Rate', `${summary.winRate ?? 0}%`, ''], ['Total R', `${fmt(summary.totalR)}R`, ''], ['Open', summary.open ?? 0, 'open']
   ].map(([label,value,cls]) => `<span class="${cls}">${label} <b>${esc(value)}</b></span>`).join('');
-  $('perfTrades').textContent = summary.totalTrades ?? summary.signals ?? 0; $('perfWin').textContent = summary.wins ?? 0; $('perfLoss').textContent = summary.losses ?? 0;
-  $('perfRate').textContent = `${summary.winRate ?? 0}%`; $('perfR').textContent = `${fmt(summary.totalR)}R`;
+  // Total Balance is calculated by account-report.js from the daily $100 account results.
 }
 function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
