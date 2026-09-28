@@ -32,12 +32,17 @@ async function hashPassword(password){
   return 'pbkdf2$120000$'+bytesToBase64(salt)+'$'+bytesToBase64(new Uint8Array(bits));
 }
 async function verifyPassword(password,stored){
-  const p=String(stored||'').split('$');if(p.length!==4||p[0]!=='pbkdf2')return false;
+  const p=String(stored||'').split('$');
+  if(p.length!==4||p[0]!=='pbkdf2')return false;
   const iterations=Number(p[1]),salt=base64ToBytes(p[2]),expected=base64ToBytes(p[3]);
   if(!Number.isFinite(iterations)||!salt.length||!expected.length)return false;
   const key=await crypto.subtle.importKey('raw',encoder.encode(password),'PBKDF2',false,['deriveBits']);
   const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations,hash:'SHA-256'},key,expected.length*8);
-  const a=new Uint8Array(bits);\n  if(a.length!==expected.length)return false;\n  let diff=0;\n  for(let i=0;i<a.length;i++)diff|=a[i]^expected[i];\n  return diff===0;
+  const a=new Uint8Array(bits);
+  if(a.length!==expected.length)return false;
+  let diff=0;
+  for(let i=0;i<a.length;i++)diff|=a[i]^expected[i];
+  return diff===0;
 }
 async function createSession(env,userId){
   const token=Array.from(randomBytes(32)).map(x=>x.toString(16).padStart(2,'0')).join('');
