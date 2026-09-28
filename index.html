@@ -70,6 +70,7 @@
       pop.querySelector('#popExpiry').textContent=free?'—':(d.user.subscriptionExpiresAt?new Date(d.user.subscriptionExpiresAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'Active');
       pop.classList.toggle('open');
     };
+    const revealAdminTelegram=()=>{if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');if(a)a.style.display='inline-block'}}; if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',revealAdminTelegram);else revealAdminTelegram();
     if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const channel=document.createElement('article');channel.className='card premium-channel-card';channel.innerHTML='<div class="premium-channel-icon">🔐</div><div><div class="accent-label">PREMIUM TELEGRAM CHANNEL</div><h2>WAJID SWING LIQUIDITY</h2><p>Private XAU/USD signals · Entry · SL · TP1–TP4</p></div><a class="telegram-connect channel-access-btn" href="'+td.telegramConnect+'" target="_blank" rel="noopener">🔐 Get Premium Channel Access</a>';document.querySelector('.left-column').appendChild(channel);const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🔐 Get Premium Channel Access';c.appendChild(a)}}catch(_){}} 
   }catch(_){location.replace('/login.html')}
 })();
@@ -229,7 +230,7 @@
         <div class="telegram-icon">➤</div>
         <div><h2>Stay Updated</h2><p>Telegram notifications can be connected to the canonical server signal.</p></div>
         <div class="coming-soon">TELEGRAM · ACTIVE FOR SUBSCRIBERS</div>
-        <a href="/telegram/admin" style="display:inline-block;margin-top:12px;padding:10px 14px;border:1px solid #2b7fff;border-radius:8px;color:#fff;background:#0d2238;text-decoration:none;font-weight:700;font-size:12px;">🔐 TELEGRAM ADMIN</a>
+        <a id="telegramAdminLink" href="/telegram/admin" style="display:none;margin-top:12px;padding:10px 14px;border:1px solid #2b7fff;border-radius:8px;color:#fff;background:#0d2238;text-decoration:none;font-weight:700;font-size:12px;">🔐 TELEGRAM ADMIN</a>
       </article>
     </aside>
   </main>
