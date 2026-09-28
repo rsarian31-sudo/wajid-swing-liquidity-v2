@@ -32,6 +32,32 @@
       .filter(t => t?.interval === '1min' && t?.status === 'CLOSED')
       .filter(t => malaysiaDayKey(t.exitTime || t.signalTime || t.createdAt) === dayKey);
 
+  function renderCalculator(rows) {
+    const balanceEl = $('calcBalance');
+    const riskEl = $('calcRisk');
+    if (!balanceEl || !riskEl) return;
+    let balance = Number(balanceEl.value);
+    let riskPct = Number(riskEl.value);
+    if (!Number.isFinite(balance) || balance <= 0) balance = 100;
+    if (!Number.isFinite(riskPct) || riskPct <= 0) riskPct = 8;
+    riskPct = Math.min(100, riskPct);
+    const oneR = balance * riskPct / 100;
+    const rs = rows.map(accountR);
+    const profitR = rs.filter(r => r > 0).reduce((a, r) => a + r, 0);
+    const lossR = rs.filter(r => r < 0).reduce((a, r) => a + r, 0);
+    const netR = profitR + lossR;
+    const set = (id, value) => {
+      const el = $(id);
+      if (el) el.textContent = value;
+    };
+    set('calcRiskUsd', money(oneR));
+    set('calcProfitUsd', money(profitR * oneR));
+    set('calcLossUsd', money(lossR * oneR));
+    set('calcNetUsd', money(netR * oneR));
+    set('calcBalanceOut', money(balance + netR * oneR));
+    set('calcTrades', rows.length);
+  }
+
   function render(rows, allClosed) {
     const rs = rows.map(accountR);
     const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * 8, 0);
@@ -51,6 +77,7 @@
     set('dailyNet', money(net));
     set('dailyBalance', money(100 + net));
     set('perfBalance', money(100 + cumulative));
+    renderCalculator(rows);
   }
 
   let allTrades = [];
@@ -84,6 +111,19 @@
       render(rows, cumulativeRows);
     });
   }
+
+  ['calcBalance','calcRisk'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    const saved = localStorage.getItem('wajid_'+id);
+    if (saved !== null) el.value = saved;
+    el.addEventListener('input', () => {
+      localStorage.setItem('wajid_'+id, el.value);
+      const dateInput = $('dailyDate');
+      const rows = closedDaily(allTrades, dateInput?.value || todayMalaysia());
+      renderCalculator(rows);
+    });
+  });
 
   updateAccountReport();
   setInterval(updateAccountReport, 60000);
