@@ -17,6 +17,13 @@
       }
     ]
   },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "wajid-members",
+      "database_id": "41805925-b66c-4f06-a7be-6a72e90f3ddf"
+    }
+  ],
   "exports": {
     "WajidTradeState": {
       "type": "durable-object",
