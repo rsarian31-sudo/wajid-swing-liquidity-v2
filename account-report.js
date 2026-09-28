@@ -49,7 +49,8 @@
     set('dailyProfit', money(profit));
     set('dailyLoss', money(loss));
     set('dailyNet', money(net));
-    set('dailyBalance', money(100 + cumulative));
+    set('dailyBalance', money(100 + net));
+    set('perfBalance', money(100 + cumulative));
   }
 
   let allTrades = [];
