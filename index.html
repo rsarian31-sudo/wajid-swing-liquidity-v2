@@ -147,7 +147,7 @@
         <div class="account-title-row">
           <div>
             <h2>Daily Account Report</h2>
-            <p>1M account calculation · Starting balance $100 · Risk per trade $8</p>
+            <p>1 minute account calculation · Starting balance $100 · Risk per trade 2%</p>
           </div>
           <label class="account-date">
             <span>Date</span>
@@ -193,20 +193,18 @@
       <article class="card calculator-card">
         <div class="card-icon blue">◈</div>
         <h2>Personal RR Calculator</h2>
-        <p class="calc-subtitle">Enter your own balance and see the same 1M trade results scaled to your account.</p>
+        <p class="calc-subtitle">Enter your balance and risk percentage.</p>
         <div class="calc-inputs">
-          <label><span>Your Balance (USDT)</span><input id="calcBalance" type="number" min="1" step="0.01" value="100" inputmode="decimal"></label>
-          <label><span>Risk per Trade (%)</span><input id="calcRisk" type="number" min="0.1" max="100" step="0.1" value="8" inputmode="decimal"></label>
+          <label><span>Amount (USDT)</span><input id="calcBalance" type="number" min="1" step="0.01" value="100" inputmode="decimal"></label>
+          <label><span>Risk (%)</span><input id="calcRisk" type="number" min="0.1" max="100" step="0.1" value="2" inputmode="decimal"></label>
         </div>
         <div class="calc-grid">
-          <div><span>1R Risk</span><b id="calcRiskUsd">$8.00</b></div>
-          <div><span>Today's Profit</span><b id="calcProfitUsd" class="win">$0.00</b></div>
-          <div><span>Today's Loss</span><b id="calcLossUsd" class="loss">$0.00</b></div>
-          <div><span>Today's Net</span><b id="calcNetUsd">$0.00</b></div>
-          <div><span>Projected Balance</span><b id="calcBalanceOut">$100.00</b></div>
-          <div><span>Trade Count</span><b id="calcTrades">0</b></div>
+          <div><span>1R</span><b id="calcRiskUsd">$2.00</b></div>
+          <div><span>Profit</span><b id="calcProfitUsd" class="win">$0.00</b></div>
+          <div><span>Loss</span><b id="calcLossUsd" class="loss">$0.00</b></div>
+          <div><span>Net</span><b id="calcNetUsd">$0.00</b></div>
+          <div><span>Balance</span><b id="calcBalanceOut">$100.00</b></div>
         </div>
-        <small class="calc-note">Based on this day's closed 1M results and the site's RR model: SL = −1R · TP2/TP3 close = +1R · TP4 = +4R.</small>
       </article>
 
       <article class="card telegram-card">
