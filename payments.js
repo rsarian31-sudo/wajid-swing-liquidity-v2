@@ -20,7 +20,16 @@ async function createOrder(request,env){
   const body=await request.json().catch(()=>({})),plan=PLANS[String(body.plan||'').toLowerCase()];
   if(!plan)return json({ok:false,error:'INVALID_PLAN'},400);
   const existing=await env.DB.prepare("SELECT id,plan,amount_usdt,expires_at,status FROM payment_orders WHERE user_id=? AND status='pending' AND expires_at>? ORDER BY created_at DESC LIMIT 1").bind(user.id,Date.now()).first();
-  if(existing)return json({ok:true,order:{id:existing.id,plan:existing.plan,amountUsdt:Number(existing.amount_usdt),expiresAt:Number(existing.expires_at),wallet:RECEIVING_WALLET,network:'BSC / BEP-20',token:'USDT'}});
+  if(existing){
+    if(existing.plan===plan.id){
+      return json({ok:true,order:{id:existing.id,plan:existing.plan,planName:plan.name,amountUsdt:plan.usd,expiresAt:Number(existing.expires_at),wallet:RECEIVING_WALLET,network:'BSC / BEP-20',token:'USDT'}});
+    }
+    // If the member switches plans before paying, reuse the pending order but update it
+    // to the newly selected plan so the amount can never remain stuck at the previous plan.
+    const now=Date.now(),expiresAt=now+15*60*1000;
+    await env.DB.prepare("UPDATE payment_orders SET plan=?,amount_usdt=?,created_at=?,expires_at=? WHERE id=? AND status='pending'").bind(plan.id,plan.usd,now,expiresAt,existing.id).run();
+    return json({ok:true,order:{id:existing.id,plan:plan.id,planName:plan.name,amountUsdt:plan.usd,expiresAt,wallet:RECEIVING_WALLET,network:'BSC / BEP-20',token:'USDT'}});
+  }
   const id=crypto.randomUUID(),now=Date.now(),expiresAt=now+15*60*1000;
   await env.DB.prepare('INSERT INTO payment_orders (id,user_id,plan,amount_usdt,network,token_contract,recipient_address,status,created_at,expires_at) VALUES (?,?,?,?,?,?,?,?,?,?)').bind(id,user.id,plan.id,plan.usd,'BSC',USDT_BSC,RECEIVING_WALLET,'pending',now,expiresAt).run();
   return json({ok:true,order:{id,plan:plan.id,planName:plan.name,amountUsdt:plan.usd,expiresAt,wallet:RECEIVING_WALLET,network:'BSC / BEP-20',token:'USDT'}},201);
