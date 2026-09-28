@@ -37,7 +37,7 @@ async function verifyPassword(password,stored){
   if(!Number.isFinite(iterations)||!salt.length||!expected.length)return false;
   const key=await crypto.subtle.importKey('raw',encoder.encode(password),'PBKDF2',false,['deriveBits']);
   const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt,iterations,hash:'SHA-256'},key,expected.length*8);
-  return crypto.subtle.timingSafeEqual(new Uint8Array(bits),expected);
+  const a=new Uint8Array(bits);\n  if(a.length!==expected.length)return false;\n  let diff=0;\n  for(let i=0;i<a.length;i++)diff|=a[i]^expected[i];\n  return diff===0;
 }
 async function createSession(env,userId){
   const token=Array.from(randomBytes(32)).map(x=>x.toString(16).padStart(2,'0')).join('');
