@@ -4,6 +4,7 @@ import { CONFIG, analyze, buildHistory } from './src/strategy.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
 import { handleAuthRequest } from './auth.js';
+import { handlePaymentRequest } from './payments.js';
 
 const INTERVALS = ['1min', '5min'];
 const SYMBOL = 'XAU/USD';
@@ -25,6 +26,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/auth/')) return handleAuthRequest(request, env);
+    if (url.pathname.startsWith('/api/payment/')) return handlePaymentRequest(request, env);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
     if (url.pathname === '/telegram/admin' && request.method === 'GET') return telegramAdminPage();
@@ -308,7 +310,30 @@ async function processTelegramUpdate(update,env){
   const telegram=ensureTelegramState(state,env),command=normalizeTelegramCommand(message.text),chatId=String(message.chat.id);
   const adminChatId=String(env.TELEGRAM_CHAT_ID||'').trim(),isAdmin=!!adminChatId&&chatId===adminChatId;
   const existing=telegram.subscribers.find(s=>String(s.chatId)===chatId),base={chatId,username:message.from?.username||null,firstName:message.from?.first_name||null,updatedAt:Date.now()};let changed=false;
-  if(command==='/start'){if(existing)Object.assign(existing,base,{active:true});else telegram.subscribers.push({...base,active:true});await telegramMessage(env,chatId,'✅ WAJID Swing Liquidity is ACTIVE.\\n\\nUse the buttons below to view Daily, Weekly and All Stats.\\n\\nYou will receive future XAU/USD 1M signals and trade results automatically.');changed=true}
+  if(command==='/start'){
+    const raw=String(message.text||'').trim();
+    const tokenMatch=raw.match(/^\/start(?:@[^\\s]+)?\\s+connect_([a-f0-9]{20,64})$/i);
+    let linkedUser=null;
+    if(tokenMatch&&env.DB){
+      linkedUser=await env.DB.prepare("SELECT id,name,email,subscription_status,subscription_expires_at FROM users WHERE telegram_connect_token=? AND telegram_connect_expires_at>? LIMIT 1").bind(tokenMatch[1],Date.now()).first();
+    }
+    if(linkedUser&&linkedUser.subscription_status==='active'&&Number(linkedUser.subscription_expires_at)>Date.now()){
+      if(existing)Object.assign(existing,base,{active:true,userId:String(linkedUser.id)});
+      else telegram.subscribers.push({...base,active:true,userId:String(linkedUser.id)});
+      await env.DB.prepare('UPDATE users SET telegram_connect_token=NULL,telegram_connect_expires_at=0,updated_at=? WHERE id=?').bind(Date.now(),String(linkedUser.id)).run();
+      await telegramMessage(env,chatId,'✅ Telegram connected successfully.\\n\\nYour active subscription is linked to this Telegram account.\\nYou will receive XAU/USD signals while your subscription remains active.');
+      changed=true;
+    }else if(isAdmin){
+      if(existing)Object.assign(existing,base,{active:true});
+      else telegram.subscribers.push({...base,active:true,source:'env'});
+      await telegramMessage(env,chatId,'✅ WAJID Swing Liquidity owner access is ACTIVE.');
+      changed=true;
+    }else if(existing?.active===true){
+      await telegramMessage(env,chatId,'🟢 Telegram is already connected.\\n\\nUse /status to check access.');
+    }else{
+      await telegramMessage(env,chatId,'🔒 Subscription required.\\n\\nPlease purchase a 1 Week or 1 Month plan on the website, then use the Telegram Connect link shown after payment.');
+    }
+  }
   else if(command==='/stop'){if(existing)Object.assign(existing,base,{active:false});else telegram.subscribers.push({...base,active:false});await telegramMessage(env,chatId,'🛑 WAJID Swing Liquidity subscription is OFF. Send /start to subscribe again.');changed=true}
   else if(command==='/status'){await telegramMessage(env,chatId,existing?.active===true?'🟢 Subscription status: ACTIVE\\n\\nSignal notifications: ON':'⚪ Subscription status: OFF.\\n\\nSend /start to subscribe.')}
   else if(command==='/test'){
