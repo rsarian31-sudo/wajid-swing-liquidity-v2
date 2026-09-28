@@ -12,6 +12,7 @@ const RULE_VERSION = 'volume-ob-creation-v2';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
+const TELEGRAM_CHANNEL_ID = '-1004402860410';
 const DUPLICATE_WINDOW_SECONDS = 15 * 60;
 const DUPLICATE_PRICE_TOLERANCE = 0.003;
 const MALAYSIA_UTC_OFFSET_MINUTES = 480;
@@ -572,6 +573,14 @@ function closeTrade(trade,result,realizedR,exit,exitTime,reason){
 }
 async function getState(stub){const response=await stub.fetch('https://state/');return response.json()}
 async function putState(stub,state){await stub.fetch('https://state/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)})}
+async function createPremiumChannelInvite(env,userId,expiresAt){
+  if(!env?.TELEGRAM_BOT_TOKEN)return null;
+  try{
+    const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/createChatInviteLink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,name:'Premium '+String(userId).slice(0,8),expire_date:Math.floor(Number(expiresAt)/1000),member_limit:1})});
+    const data=await response.json().catch(()=>null);
+    return data?.ok===true?data?.result?.invite_link||null:null;
+  }catch(_){return null}
+}
 async function sendTelegramMessage(chatId,text,env){
   if(!env?.TELEGRAM_BOT_TOKEN)return false;
   try{
@@ -667,7 +676,7 @@ function enqueuePendingTelegram(telegram, event, chatId){
 }
 
 async function sendTelegramWithQueue(env,event,telegram){
-  const active=(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
+  const active=String(telegram?.channelId||TELEGRAM_CHANNEL_ID).trim()?[{chatId:String(telegram?.channelId||TELEGRAM_CHANNEL_ID),active:true,source:'channel'}]:(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
   if(!Array.isArray(telegram.sentKeys)) telegram.sentKeys=[];
   const pendingActive=active.filter(s=>!telegram.sentKeys.includes(telegramEventKey(event,String(s.chatId))));
   if(!pendingActive.length)return {messageIds:{},failedChatIds:[],ok:true,reason:active.length?'ALREADY_DELIVERED':'NO_ACTIVE_SUBSCRIBERS'};
