@@ -335,7 +335,7 @@ async function processTelegramUpdate(update,env){
   if(command==='/channelid' && isAdmin){
     const channelId=String(telegram.channelId||'').trim();
     const channelTitle=String(telegram.channelTitle||'').trim();
-    await sendTelegramMessage(chatId, channelId ? `📡 Channel detected\\n\\nTitle: ${channelTitle||'—'}\\nChannel ID: ${channelId}` : '❌ Channel ID not detected yet. Send a new message in the channel first.',env);
+    await sendTelegramMessage(chatId, channelId ? `📡 Channel detected\n\nTitle: ${channelTitle||'—'}\nChannel ID: ${channelId}` : '❌ Channel ID not detected yet. Send a new message in the channel first.',env);
     return;
   }
   if(command==='/start'){
@@ -350,7 +350,7 @@ async function processTelegramUpdate(update,env){
       else telegram.subscribers.push({...base,active:true,userId:String(linkedUser.id)});
       await env.DB.prepare('UPDATE users SET telegram_connect_token=NULL,telegram_connect_expires_at=0,updated_at=? WHERE id=?').bind(Date.now(),String(linkedUser.id)).run();
       const channelInvite=await createPremiumChannelInvite(env,String(linkedUser.id),Number(linkedUser.subscription_expires_at));
-      await telegramMessage(env,chatId,channelInvite?'✅ Telegram connected successfully.\\n\\n🔐 Premium Channel Access:\\n'+channelInvite+'\\n\\nYou will receive XAU/USD signals in the private channel while your subscription remains active.':'✅ Telegram connected successfully.\\n\\nYour subscription is active, but the channel invite could not be generated yet. Please contact support.');
+      await telegramMessage(env,chatId,channelInvite?'✅ Telegram connected successfully.\n\n🔐 Premium Channel Access:\n'+channelInvite+'\n\nYou will receive XAU/USD signals in the private channel while your subscription remains active.':'✅ Telegram connected successfully.\n\nYour subscription is active, but the channel invite could not be generated yet. Please contact support.');
       changed=true;
     }else if(isAdmin){
       if(existing)Object.assign(existing,base,{active:true});
@@ -358,24 +358,24 @@ async function processTelegramUpdate(update,env){
       await telegramMessage(env,chatId,'✅ WAJID Swing Liquidity owner access is ACTIVE.');
       changed=true;
     }else if(existing?.active===true){
-      await telegramMessage(env,chatId,'🟢 Telegram is already connected.\\n\\nUse /status to check access.');
+      await telegramMessage(env,chatId,'🟢 Telegram is already connected.\n\nUse /status to check access.');
     }else{
-      await telegramMessage(env,chatId,'🔒 Subscription required.\\n\\nPlease purchase a 1 Week or 1 Month plan on the website, then use the Telegram Connect link shown after payment.');
+      await telegramMessage(env,chatId,'🔒 Subscription required.\n\nPlease purchase a 1 Week or 1 Month plan on the website, then use the Telegram Connect link shown after payment.');
     }
   }
   else if(command==='/stop'){if(existing)Object.assign(existing,base,{active:false});else telegram.subscribers.push({...base,active:false});await telegramMessage(env,chatId,'🛑 WAJID Swing Liquidity subscription is OFF. Send /start to subscribe again.');changed=true}
-  else if(command==='/status'){await telegramMessage(env,chatId,existing?.active===true?'🟢 Subscription status: ACTIVE\\n\\nSignal notifications: ON':'⚪ Subscription status: OFF.\\n\\nSend /start to subscribe.')}
+  else if(command==='/status'){await telegramMessage(env,chatId,existing?.active===true?'🟢 Subscription status: ACTIVE\n\nSignal notifications: ON':'⚪ Subscription status: OFF.\n\nSend /start to subscribe.')}
   else if(command==='/test'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ TEST is available to the bot owner only.');
     else if(existing?.active!==true)await telegramMessage(env,chatId,'⚪ Signal subscription is OFF. Send /start first.');
-    else{const testTrade={id:'telegram-test:'+Date.now(),interval:'1min',direction:'BUY',signalTime:Math.floor(Date.now()/1000),entry:4131.19,stopLoss:4129.19,tp1:4133.19,tp2:4135.19,tp3:4137.19,tp4:4139.19,probability:99,score:99,news:{bias:'TEST'}};const result=await sendTelegramWithQueue(env,{type:'SIGNAL',interval:'1min',trade:testTrade,probability:99,score:99},telegram);await telegramMessage(env,chatId,result?.ok===true?'🧪 TEST SIGNAL SENT SUCCESSFULLY.\\n\\nThe test signal was sent to the Premium Channel.':'⚠️ TEST SIGNAL FAILED.\\n\\nThe server queued the test for retry. Check the deployment logs.')}
+    else{const testTrade={id:'telegram-test:'+Date.now(),interval:'1min',direction:'BUY',signalTime:Math.floor(Date.now()/1000),entry:4131.19,stopLoss:4129.19,tp1:4133.19,tp2:4135.19,tp3:4137.19,tp4:4139.19,probability:99,score:99,news:{bias:'TEST'}};const result=await sendTelegramWithQueue(env,{type:'SIGNAL',interval:'1min',trade:testTrade,probability:99,score:99},telegram);await telegramMessage(env,chatId,result?.ok===true?'🧪 TEST SIGNAL SENT SUCCESSFULLY.\n\nThe test signal was sent to the Premium Channel.':'⚠️ TEST SIGNAL FAILED.\n\nReason: '+String(result?.error||'Telegram delivery failed')+'\n\nChannel ID: '+String(telegram.channelId||TELEGRAM_CHANNEL_ID))}
   }else if(command==='/broadcast'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ BROADCAST is available to the bot owner only.');
-    else{const body=String(message.text||'').trim().replace(/^\/broadcast(?:@[^\s]+)?\s*/i,'').replace(/^\/bc(?:@[^\s]+)?\s*/i,'').trim();if(!body)await telegramMessage(env,chatId,'📢 Usage: /broadcast Your message here');else{const result=await sendTelegramBroadcast(env,body,telegram);await telegramMessage(env,chatId,'📢 BROADCAST COMPLETE.\\n\\nDelivered: '+result.delivered+'\\nFailed: '+result.failed+'\\nActive users: '+result.total);}}
+    else{const body=String(message.text||'').trim().replace(/^\/broadcast(?:@[^\s]+)?\s*/i,'').replace(/^\/bc(?:@[^\s]+)?\s*/i,'').trim();if(!body)await telegramMessage(env,chatId,'📢 Usage: /broadcast Your message here');else{const result=await sendTelegramBroadcast(env,body,telegram);await telegramMessage(env,chatId,'📢 BROADCAST COMPLETE.\n\nDelivered: '+result.delivered+'\nFailed: '+result.failed+'\nActive users: '+result.total);}}
   }else if(command==='/daily')await telegramMessage(env,chatId,formatPeriodReport(state,'daily'));
   else if(command==='/weekly')await telegramMessage(env,chatId,formatPeriodReport(state,'weekly'));
-  else if(command==='/stats')await telegramMessage(env,chatId,formatPeriodReport(state,'daily')+'\\n\\n'+formatPeriodReport(state,'weekly'));
-  else if(command==='/help')await telegramMessage(env,chatId,'📊 WAJID Swing Liquidity\\n\\n📊 Daily Stats — today signals + W/L + win rate\\n📅 Weekly Report — this week signals + W/L + win rate\\n📈 All Stats — today + this week\\n🔄 Refresh Stats — refresh current statistics\\n🟢 Status — subscription status\\n🧪 Test — owner only\\n📢 Broadcast — owner only: /broadcast message\\n\\nCommands: /start /stop /daily /weekly /stats /status /test /broadcast /help');
+  else if(command==='/stats')await telegramMessage(env,chatId,formatPeriodReport(state,'daily')+'\n\n'+formatPeriodReport(state,'weekly'));
+  else if(command==='/help')await telegramMessage(env,chatId,'📊 WAJID Swing Liquidity\n\n📊 Daily Stats — today signals + W/L + win rate\n📅 Weekly Report — this week signals + W/L + win rate\n📈 All Stats — today + this week\n🔄 Refresh Stats — refresh current statistics\n🟢 Status — subscription status\n🧪 Test — owner only\n📢 Broadcast — owner only: /broadcast message\n\nCommands: /start /stop /daily /weekly /stats /status /test /broadcast /help');
   state.telegram=telegram;if(changed)await putState(stub,state);
 }
 function formatPeriodReport(state,period){const now=new Date(),start=period==='daily'?startOfMalaysiaDay(now):startOfMalaysiaWeek(now),end=period==='daily'?new Date(start.getTime()+86400000):new Date(start.getTime()+7*86400000),trades=collectTrades(state).filter(t=>{const raw=t.signalTime??t.createdAt??0;const numeric=Number(raw);const ts=Number.isFinite(numeric)?numeric*(numeric<100000000000?1000:1):Date.parse(String(raw));return Number.isFinite(ts)&&ts>=start.getTime()&&ts<end.getTime()}),signals=trades.length,wins=trades.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length,losses=trades.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length,openTrades=collectOpenTrades(state),open=openTrades.length,decided=wins+losses,winRate=decided?((wins/decided)*100).toFixed(1):'0.0',totalR=trades.filter(t=>t.status==='CLOSED').reduce((sum,t)=>sum+(Number.isFinite(Number(t.realizedR))?Number(t.realizedR):0),0),one=trades.filter(t=>t.interval==='1min'),five=trades.filter(t=>t.interval==='5min'),label=period==='daily'?`📊 DAILY REPORT · ${malaysiaDateLabel(start)}`:`📅 WEEKLY REPORT · ${malaysiaDateLabel(start)} → ${malaysiaDateLabel(new Date(end.getTime()-86400000))}`;const openLines=openTrades.map((t,i)=>{const tf=t.interval==='1min'?'1M':'5M';const tp2Win=t.tp2Hit?' · TP2 reached':'';return `🔹 ${i+1}. ${tf} ${t.direction} · Entry ${t.entry} · SL ${t.stopLoss}\n   TP1 ${t.tp1} · TP2 ${t.tp2} · TP3 ${t.tp3} · TP4 ${t.tp4}${tp2Win}`});return[`🔥 WAJID SWING LIQUIDITY`,label,`XAU/USD`,'',`📌 Signals: ${signals}`,`✅ Win: ${wins}`,`❌ Loss: ${losses}`,`⏳ Open: ${open}`,`🎯 Win Rate: ${winRate}%`,`📈 Total R: ${totalR>=0?'+':''}${totalR.toFixed(2)}R`,'',...(openLines.length?['📂 OPEN TRADES',...openLines]:['📂 OPEN TRADES','None']),'',`1M: ${one.length} signals · ${one.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length}W / ${one.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length}L`,`5M: ${five.length} signals · ${five.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length}W / ${five.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length}L`,'','🔒 Server-controlled results','🕐 Report timezone: Malaysia (UTC+8)'].join('\n')}
@@ -643,14 +643,14 @@ async function sendTelegram(env,event,subscribers){
   if(event.type==='SIGNAL'){
     const nb=trade.news?.bias||'NEUTRAL';
     const ni=trade.news?.highImpactRecent?'⚠️ HIGH-IMPACT NEWS':'📰 News: '+nb;
-    text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1} (1R)`,`2️⃣ TP2: ${trade.tp2} (2R)`,`3️⃣ TP3: ${trade.tp3} (3R milestone)`,`4️⃣ TP4: ${trade.tp4} (4R full target)`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\\n');
-  }else if(event.type==='TP1')text=`🟡 WAJID ${tf} · XAU/USD\\n\\nTP1 REACHED · +1R milestone\\nEntry: ${trade.entry}\\nTP1: ${trade.tp1}\\nStatus: monitoring TP2–TP4`;
-  else if(event.type==='TP2')text=`🟡 WAJID ${tf} · XAU/USD\\n\\nTP2 REACHED · +2R milestone\\nEntry: ${trade.entry}\\nTP2: ${trade.tp2}\\nStatus: OPEN · monitoring TP3–TP4 or Entry SL`;
-  else if(event.type==='TP3')text=`🟠 WAJID ${tf} · XAU/USD\\n\\nTP3 REACHED · +3R milestone\\nEntry: ${trade.entry}\\nTP3: ${trade.tp3}\\nStatus: OPEN · monitoring TP4 or Entry SL`;
-  else if(event.type==='TP4')text=`🏆🔥 WAJID ${tf} · XAU/USD\\n\\n✅ FULL TP HIT · TP4 reached\\nEntry: ${trade.entry}\\nTP4: ${trade.tp4}\\nResult: FULL TP HIT`;
-  else if(event.type==='SL_AFTER_TP2')text=`🟠 WAJID ${tf} · XAU/USD\\n\\nCLOSED · Entry SL after TP2/TP3\\nEntry: ${trade.entry}\\nSL: ${trade.stopLoss}\\nResult: +1R realized`;
-  else if(event.type==='LOSS')text=`🔴 WAJID ${tf} · XAU/USD\\n\\n❌ LOSS · SL reached\\nEntry: ${trade.entry}\\nSL: ${trade.stopLoss}\\nResult: -1R`;
-  else if(event.type==='BREAK_EVEN')text=`⚪ WAJID ${tf} · XAU/USD\\n\\n↔️ BREAK-EVEN · SL at Entry\\nEntry: ${trade.entry}\\nSL: ${trade.stopLoss}\\nResult: 0R · TP1 was reached`;
+    text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1} (1R)`,`2️⃣ TP2: ${trade.tp2} (2R)`,`3️⃣ TP3: ${trade.tp3} (3R milestone)`,`4️⃣ TP4: ${trade.tp4} (4R full target)`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\n');
+  }else if(event.type==='TP1')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP1 REACHED · +1R milestone\nEntry: ${trade.entry}\nTP1: ${trade.tp1}\nStatus: monitoring TP2–TP4`;
+  else if(event.type==='TP2')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP2 REACHED · +2R milestone\nEntry: ${trade.entry}\nTP2: ${trade.tp2}\nStatus: OPEN · monitoring TP3–TP4 or Entry SL`;
+  else if(event.type==='TP3')text=`🟠 WAJID ${tf} · XAU/USD\n\nTP3 REACHED · +3R milestone\nEntry: ${trade.entry}\nTP3: ${trade.tp3}\nStatus: OPEN · monitoring TP4 or Entry SL`;
+  else if(event.type==='TP4')text=`🏆🔥 WAJID ${tf} · XAU/USD\n\n✅ FULL TP HIT · TP4 reached\nEntry: ${trade.entry}\nTP4: ${trade.tp4}\nResult: FULL TP HIT`;
+  else if(event.type==='SL_AFTER_TP2')text=`🟠 WAJID ${tf} · XAU/USD\n\nCLOSED · Entry SL after TP2/TP3\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: +1R realized`;
+  else if(event.type==='LOSS')text=`🔴 WAJID ${tf} · XAU/USD\n\n❌ LOSS · SL reached\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: -1R`;
+  else if(event.type==='BREAK_EVEN')text=`⚪ WAJID ${tf} · XAU/USD\n\n↔️ BREAK-EVEN · SL at Entry\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: 0R · TP1 was reached`;
   else return false;
 
   const messageIds={},failedChatIds=[];
@@ -689,7 +689,7 @@ async function sendTelegram(env,event,subscribers){
       }));
     }
   }
-  return {messageIds,failedChatIds,ok:failedChatIds.length===0,error:failedChatIds.length?'TELEGRAM_DELIVERY_FAILED':null};
+  return {messageIds,failedChatIds,ok:failedChatIds.length===0,error:failedChatIds.length?(lastError||'TELEGRAM_DELIVERY_FAILED'):null};
 }
 function telegramEventKey(event, chatId){
   const tradeId = event?.trade?.id || `${event?.interval || ''}:${event?.trade?.signalTime || ''}:${event?.trade?.direction || ''}`;
