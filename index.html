@@ -26,7 +26,7 @@
     window.WAJID_USER=d.user;
     const free=d.user.subscriptionStatus!=='active';
     if(free){
-      document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.calculator-card,.telegram-card').forEach(x=>x.style.display='none');
+      document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.telegram-card').forEach(x=>x.style.display='none');
       const c=document.createElement('article');
       c.className='card subscription-lock';
       c.innerHTML='<div class="accent-label">👑 MEMBERS AREA</div><h2>Unlock Live Signals</h2><p>Your performance history is available. Choose a subscription to unlock live Entry / SL / TP signals and Telegram access.</p><div class="pay-box"><b>USDT · BNB Smart Chain (BEP-20)</b><div class="pay-plans"><button class="pay-plan" type="button" onclick="startPayment(\'week\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Week · 7 Days</span></button><button class="pay-plan month" type="button" onclick="startPayment(\'month\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Month · 30 Days</span></button></div><div id="payDetails"></div></div>';
