@@ -329,6 +329,12 @@ async function processTelegramUpdate(update,env){
   const telegram=ensureTelegramState(state,env),command=normalizeTelegramCommand(message.text),chatId=String(message.chat.id);
   const adminChatId=String(env.TELEGRAM_CHAT_ID||'').trim(),isAdmin=!!adminChatId&&chatId===adminChatId;
   const existing=telegram.subscribers.find(s=>String(s.chatId)===chatId),base={chatId,username:message.from?.username||null,firstName:message.from?.first_name||null,updatedAt:Date.now()};let changed=false;
+  if(command==='/channelid' && isAdmin){
+    const channelId=String(telegram.channelId||'').trim();
+    const channelTitle=String(telegram.channelTitle||'').trim();
+    await sendTelegramMessage(chatId, channelId ? `📡 Channel detected\\n\\nTitle: ${channelTitle||'—'}\\nChannel ID: ${channelId}` : '❌ Channel ID not detected yet. Send a new message in the channel first.');
+    return;
+  }
   if(command==='/start'){
     const raw=String(message.text||'').trim();
     const tokenMatch=raw.match(/^\/start(?:@[^\\s]+)?\\s+connect_([a-f0-9]{20,64})$/i);
