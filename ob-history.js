@@ -49,7 +49,7 @@
     shell.insertBefore(tools, chart);
     const legend = document.createElement('div');
     legend.className = 'wajid-chart-legend';
-    legend.innerHTML = `<span>XAU/USD</span><span class="muted" data-wj-legend="tf">15M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
+    legend.innerHTML = `<span>XAU/USD</span><span class="muted" data-wj-legend="tf">1M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
     chart.appendChild(legend);
     tools.addEventListener('click', (e) => {
       const button = e.target.closest('button[data-wj]');
@@ -166,7 +166,7 @@
   async function boot() {
     for (let i=0;i<40 && !window.__wajidChart;i++) await wait(150);
     setupShell();
-    const initial = document.querySelector('[data-tf].active')?.dataset.tf || '15min';
+    const initial = document.querySelector('[data-tf].active')?.dataset.tf || '1min';
     await loadHistory(initial);
     document.querySelectorAll('[data-tf]').forEach(b => {
       if (b.__wajidOBBound) return;
