@@ -100,7 +100,11 @@ async function telegramLink(request,env){
     const inviteLink=data?.ok===true?data?.result?.invite_link:null;
     if(!inviteLink)return json({ok:false,error:data?.description||'CHANNEL_INVITE_FAILED'},502);
     const now=Date.now();
-    await env.DB.prepare('INSERT INTO telegram_invites (id,user_id,invite_link,expires_at,created_at) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),String(user.id),inviteLink,expiresAt,now).run();
+    try{
+      await env.DB.prepare('INSERT INTO telegram_invites (id,user_id,invite_link,expires_at,created_at) VALUES (?,?,?,?,?)').bind(crypto.randomUUID(),String(user.id),inviteLink,expiresAt,now).run();
+    }catch(_){
+      // Access still works if the optional invite-tracking migration has not been applied yet.
+    }
     return json({ok:true,channelInvite:inviteLink,telegramConnect:inviteLink});
   }catch(error){
     console.error('telegram invite error',error?.message||String(error));
