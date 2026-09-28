@@ -319,7 +319,7 @@ async function processTelegramUpdate(update,env){
         state.telegram.channelId=id;
         state.telegram.channelTitle=title;
         state.telegram.channelDetectedAt=Date.now();
-        await saveState(stub,state);
+        await putState(stub,state);
       }
     }
     return;
@@ -332,7 +332,7 @@ async function processTelegramUpdate(update,env){
   if(command==='/channelid' && isAdmin){
     const channelId=String(telegram.channelId||'').trim();
     const channelTitle=String(telegram.channelTitle||'').trim();
-    await sendTelegramMessage(chatId, channelId ? `📡 Channel detected\\n\\nTitle: ${channelTitle||'—'}\\nChannel ID: ${channelId}` : '❌ Channel ID not detected yet. Send a new message in the channel first.');
+    await sendTelegramMessage(chatId, channelId ? `📡 Channel detected\\n\\nTitle: ${channelTitle||'—'}\\nChannel ID: ${channelId}` : '❌ Channel ID not detected yet. Send a new message in the channel first.',env);
     return;
   }
   if(command==='/start'){
@@ -572,6 +572,14 @@ function closeTrade(trade,result,realizedR,exit,exitTime,reason){
 }
 async function getState(stub){const response=await stub.fetch('https://state/');return response.json()}
 async function putState(stub,state){await stub.fetch('https://state/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)})}
+async function sendTelegramMessage(chatId,text,env){
+  if(!env?.TELEGRAM_BOT_TOKEN)return false;
+  try{
+    const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/sendMessage',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:String(chatId),text})});
+    const data=await response.json().catch(()=>null);
+    return response.ok&&data?.ok===true;
+  }catch(_){return false}
+}
 async function sendTelegramBroadcast(env,text,telegram){
   const active=(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));let delivered=0,failed=0;
   for(const subscriber of active){const chatId=String(subscriber.chatId);let ok=false;
