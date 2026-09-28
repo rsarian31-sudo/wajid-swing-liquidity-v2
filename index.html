@@ -70,7 +70,7 @@
       pop.querySelector('#popExpiry').textContent=free?'—':(d.user.subscriptionExpiresAt?new Date(d.user.subscriptionExpiresAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'Active');
       pop.classList.toggle('open');
     };
-    if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🤖 Connect Telegram';c.appendChild(a)}}catch(_){}} 
+    if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🔐 Get Premium Channel Access';c.appendChild(a)}}catch(_){}} 
   }catch(_){location.replace('/login.html')}
 })();
 </script>
