@@ -10,3 +10,27 @@
 .calculator-card .calc-grid span{display:block;color:#72879b;font-size:9px}
 .calculator-card .calc-grid b{display:block;margin-top:5px;color:#f0f5f9;font-size:13px}
 @media(max-width:600px){.calculator-card .calc-inputs{grid-template-columns:1fr 1fr}.calculator-card .calc-grid{grid-template-columns:repeat(3,1fr)}}
+
+/* Mobile daily history: show TP results without horizontal scrolling */
+@media(max-width:700px){
+  .daily-trades-scroll{overflow:hidden}
+  .daily-trade,.daily-trade-header{min-width:0;width:100%;grid-template-columns:1.45fr .7fr .7fr .7fr;gap:6px;padding:9px 10px}
+  .daily-trade:nth-child(n),.daily-trade-header:nth-child(n){box-sizing:border-box}
+  .daily-trade > :nth-child(3),.daily-trade > :nth-child(4),
+  .daily-trade-header > :nth-child(3),.daily-trade-header > :nth-child(4){display:none}
+  .daily-trade-header > :nth-child(5)::after{content:'TP1'}
+  .daily-trade-header > :nth-child(6)::after{content:'TP2'}
+  .daily-trade-header > :nth-child(7)::after{content:'TP3'}
+  .daily-trade-header > :nth-child(8)::after{content:'TP4'}
+  .daily-trade-header > :nth-child(5),
+  .daily-trade-header > :nth-child(6),
+  .daily-trade-header > :nth-child(7),
+  .daily-trade-header > :nth-child(8){font-size:0}
+  .daily-trade-header > :nth-child(5)::after,
+  .daily-trade-header > :nth-child(6)::after,
+  .daily-trade-header > :nth-child(7)::after,
+  .daily-trade-header > :nth-child(8)::after{font-size:9px}
+  .daily-trade > :nth-child(9){font-size:9px}
+  .daily-trade > :nth-child(10){font-size:9px}
+  .daily-trade > :nth-child(11){font-size:10px}
+}
