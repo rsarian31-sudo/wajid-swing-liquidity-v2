@@ -4,7 +4,7 @@ const ALLOWED=new Set(['1min','5min']);
 const FEED_CACHE=new Map();
 const FEED_CACHE_TTL_MS=15000;
 
-export async function onRequest({request,env,waitUntil}){\n  const user=await getAuthUser(request,env);\n  if(!user)return json({success:false,error:'LOGIN_REQUIRED'},401);\n  const subscriber=hasActiveSubscription(user);
+export async function onRequest({request,env,waitUntil}){\n  const authConfigured=!!env.DB;\n  const user=authConfigured?await getAuthUser(request,env):null;\n  if(authConfigured&&!user)return json({success:false,error:'LOGIN_REQUIRED'},401);\n  const subscriber=authConfigured?hasActiveSubscription(user):true;
   if(request.method!=='GET')return json({success:false,error:'Method not allowed'},405);
   try{
     const u=new URL(request.url),interval=ALLOWED.has(u.searchParams.get('interval'))?u.searchParams.get('interval'):'1min';
