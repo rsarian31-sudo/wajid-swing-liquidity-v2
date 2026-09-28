@@ -268,7 +268,7 @@ async function load() {
     setFlat(stopSeries,candles,validPlan?plan.stopLoss:null);
     setFlat(tp2Series,candles,validPlan?plan.tp2:null);
 
-    renderHistory({...data.history, activeTrades:data.activeTrades||[]}); renderDiagnostics(data.diagnostics); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
+    renderHistory({...data.history, activeTrades:data.activeTrades||[]}); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
   } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
   finally { loading=false; }
 }
