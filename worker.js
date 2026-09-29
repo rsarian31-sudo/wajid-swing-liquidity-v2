@@ -732,18 +732,13 @@ async function sendTelegram(env,event,subscribers){
     let delivered=false;
     for(let attempt=0;attempt<3;attempt++){
       try{
-        const response=await fetch(`${TELEGRAM_API}${encodeURIComponent(env.TELEGRAM_BOT_TOKEN)}/sendMessage`,{
-          method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify(payload)
-        });
-        const data=await response.json().catch(()=>null);
-        if(response.ok&&data?.ok&&data?.result?.message_id){
-          messageIds[chatId]=data.result.message_id;
+        const data=await telegramApiCall(env,'sendMessage',payload);
+        if(data?.message_id){
+          messageIds[chatId]=data.message_id;
           delivered=true;
           break;
         }
-        lastError=data?.description||`HTTP ${response.status}`;
+        lastError='Telegram sendMessage returned no message_id';
       }catch(error){
         lastError=error?.message||String(error);
       }
