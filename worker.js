@@ -260,6 +260,7 @@ async function runInterval(interval, env, signalSessionOpen = true) {
     uniqueCandidates.push({ candidate, signalId });
   }
 
+  let lastSignalTelegramRetry = null;
   for (const { candidate, signalId } of uniqueCandidates) {
     const signal = {
       direction: candidate.direction, time: Number(candidate.signalTime), entryTime: Number(candidate.signalTime),
@@ -282,7 +283,9 @@ async function runInterval(interval, env, signalSessionOpen = true) {
 
     let active = makeActiveTrade(interval, signal, plan, analysis, news);
     bucket.lastSignalId = signalId;
-    const telegramResult = await sendTelegramWithQueue(env, { type:'SIGNAL', interval, trade:active, probability:signal.probability, score:signal.score }, telegram);
+    const telegramEvent = { type:'SIGNAL', interval, trade:active, probability:signal.probability, score:signal.score };
+    const telegramResult = await sendTelegramWithQueue(env, telegramEvent, telegram);
+    if (telegramResult?.ok !== true) lastSignalTelegramRetry = telegramEvent;
     if (telegramResult?.messageIds) active = { ...active, telegramMessageIds: telegramResult.messageIds };
     current.telegram = telegram;
     await putState(state, current);
@@ -311,6 +314,13 @@ async function runInterval(interval, env, signalSessionOpen = true) {
   current.intervals[interval] = bucket;
   current.telegram = telegram;
   await putState(state, current);
+  // Retry the latest real signal once after the trade state is persisted.
+  // sentKeys prevents a duplicate if the first delivery already succeeded.
+  if (lastSignalTelegramRetry) {
+    await sendTelegramWithQueue(env, lastSignalTelegramRetry, telegram);
+    current.telegram = telegram;
+    await putState(state, current);
+  }
 }
 
 function isCrossTimeframeDuplicate(_state, _interval, _signal) {
