@@ -42,7 +42,50 @@ const obBottomSeries = chart.addLineSeries({ color: '#ff007f', lineWidth: 1, lin
 const obSplitSeries = chart.addLineSeries({ color: '#d7d7d7', lineWidth: 1, lineStyle: 1, priceLineVisible: false, lastValueVisible: false, title: 'OB SPLIT' });
 
 const fmt = (x) => Number.isFinite(Number(x)) ? Number(x).toFixed(2) : '—';
-const time = (x) => x ? new Date(Number(x) * 1000).toLocaleString([], { month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+
+// The dashboard reports all signal/history times in Malaysia time (UTC+8),
+// independent of the phone/browser timezone. The backend stores Unix seconds,
+// so this changes display only and does not alter trade timestamps or strategy logic.
+const MYT_TIME_ZONE = 'Asia/Kuala_Lumpur';
+const MYT_FORMATTER = new Intl.DateTimeFormat('en-MY', {
+  timeZone: MYT_TIME_ZONE,
+  month: 'short',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: true
+});
+const MYT_PARTS_FORMATTER = new Intl.DateTimeFormat('en-CA', {
+  timeZone: MYT_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+  hour12: false
+});
+const time = (x) => {
+  const seconds = Number(x);
+  return Number.isFinite(seconds) && seconds > 0 ? MYT_FORMATTER.format(new Date(seconds * 1000)) : '—';
+};
+function mytParts(ts) {
+  const seconds = Number(ts);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const parts = Object.fromEntries(
+    MYT_PARTS_FORMATTER.formatToParts(new Date(seconds * 1000))
+      .filter(p => p.type !== 'literal')
+      .map(p => [p.type, p.value])
+  );
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour),
+    minute: Number(parts.minute),
+    second: Number(parts.second)
+  };
+}
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
 const tfLabel = () => interval === '1min' ? '1M' : '5M';
 const tfLong = () => interval === '1min' ? '1 Minute' : '5 Minutes';
@@ -83,11 +126,38 @@ function calcStats(trades) {
   const totalR = closed.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
   return { signals: list.length, wins, losses, open, winRate: wins + losses ? Number((wins / (wins + losses) * 100).toFixed(2)) : 0, totalR: Number(totalR.toFixed(2)) };
 }
-function dayKey(ts) { const d = new Date(Number(ts) * 1000); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-function startOfWeek(ts) { const d = new Date(Number(ts) * 1000); const day = d.getDay(); d.setHours(0,0,0,0); d.setDate(d.getDate() - (day === 0 ? 6 : day - 1)); return d; }
-function weekKey(ts) { return dayKey(Math.floor(startOfWeek(ts).getTime() / 1000)); }
-function formatDayLabel(key) { const [y,m,d] = key.split('-').map(Number); return new Date(y,m-1,d).toLocaleDateString([], { weekday:'long', year:'numeric', month:'long', day:'numeric' }); }
-function formatWeekLabel(key) { const [y,m,d] = key.split('-').map(Number); const start = new Date(y,m-1,d), end = new Date(start); end.setDate(start.getDate()+6); return `${start.toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'})} – ${end.toLocaleDateString([], {month:'short',day:'numeric',year:'numeric'})}`; }
+function dayKey(ts) {
+  const p = mytParts(ts);
+  return p ? `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}` : '—';
+}
+function startOfWeek(ts) {
+  const p = mytParts(ts);
+  if (!p) return null;
+  const d = new Date(Date.UTC(p.year, p.month - 1, p.day));
+  const day = d.getUTCDay();
+  d.setUTCDate(d.getUTCDate() - (day === 0 ? 6 : day - 1));
+  return d;
+}
+function weekKey(ts) {
+  const d = startOfWeek(ts);
+  return d ? `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}` : '—';
+}
+function formatDayLabel(key) {
+  const [y,m,d] = key.split('-').map(Number);
+  return new Intl.DateTimeFormat('en-MY', {
+    timeZone: MYT_TIME_ZONE, weekday:'long', year:'numeric', month:'long', day:'numeric'
+  }).format(new Date(Date.UTC(y,m-1,d,12,0,0)));
+}
+function formatWeekLabel(key) {
+  const [y,m,d] = key.split('-').map(Number);
+  const start = new Date(Date.UTC(y,m-1,d,12,0,0));
+  const end = new Date(start);
+  end.setUTCDate(start.getUTCDate()+6);
+  const fmtDay = new Intl.DateTimeFormat('en-MY', {
+    timeZone: MYT_TIME_ZONE, month:'short', day:'numeric', year:'numeric'
+  });
+  return `${fmtDay.format(start)} – ${fmtDay.format(end)}`;
+}
 
 function renderSummary(summary) {
   $('summary').innerHTML = [
