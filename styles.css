@@ -76,3 +76,23 @@ mix-blend-mode:screen;filter:blur(.2px)}
  .signal h1{font-size:46px}
  .brand{font-size:21px}
 }
+
+/* Mobile header layout: Premium/Profile first, compact server status underneath. */
+@media(max-width:700px){
+  .top{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;align-items:start}
+  .brand-block{min-width:0}
+  .top-right{grid-column:2;grid-row:1;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-start;gap:6px;width:auto;min-width:138px}
+  .quote{display:none}
+  .member-pill{order:1;justify-content:flex-end;gap:5px;padding:6px 8px;font-size:10px}
+  .member-pill span{display:none}
+  .member-pill b{font-size:10px}
+  .status-row{order:2;display:flex;flex-direction:column;align-items:flex-end;gap:4px;margin-left:0}
+  .status{order:1;font-size:9px;padding:5px 8px}
+  .server-pill{order:2;font-size:8px;padding:4px 7px;opacity:.85}
+  .server-pill i{width:5px;height:5px;margin-right:4px}
+}
+@media(max-width:430px){
+  .top-right{min-width:124px}
+  .member-pill{padding:5px 7px}
+  .profile-btn{font-size:9px}
+}
