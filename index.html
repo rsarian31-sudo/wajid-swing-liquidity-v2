@@ -24,28 +24,47 @@
 .pay-details{margin-top:14px}.pay-plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay-plan{border:1px solid #2b7fff;background:linear-gradient(145deg,#0788ff,#1555d8);color:#fff;border-radius:16px;padding:18px 14px;cursor:pointer;text-align:center}.pay-plan b{display:block;font-size:15px}.pay-plan span{display:block;color:#8fa6b8;font-size:11px;margin-top:3px}.pay-details{margin-top:12px}.pay-address{word-break:break-all;font:600 11px ui-monospace,monospace;color:#b9d6e8;background:#06101a;padding:10px;border-radius:8px}.pay-input{width:100%;box-sizing:border-box;margin-top:10px;padding:11px;border:1px solid #28485f;background:#06101a;color:#fff;border-radius:8px}.pay-action{margin-top:10px;border:1px solid #1d4b6a;background:#128df2;color:#fff;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.pay-msg{margin-top:10px;color:#9fb2c3;font-size:11px}.telegram-connect{display:inline-block;margin-top:8px;padding:7px 10px;border-radius:8px;background:#0d2238;border:1px solid #2b7fff;color:#fff;text-decoration:none;font-size:10px;font-weight:800}.premium-channel-box{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid #284b68;border-radius:12px;background:#06111c}.premium-channel-box .premium-channel-icon{font-size:22px}.premium-channel-box b{display:block;color:#fff;font-size:12px}.premium-channel-box p{margin:3px 0 0;color:#8fa6b8;font-size:10px;line-height:1.45}.channel-lock{margin-left:auto;white-space:nowrap;padding:5px 7px;border-radius:999px;background:#211a08;border:1px solid #66511d;color:#ffd36a;font-size:8px;font-weight:900}.premium-channel-card{display:flex;align-items:center;gap:12px;padding:16px}.premium-channel-card .premium-channel-icon{font-size:26px}.premium-channel-card h2{margin:3px 0 2px;font-size:16px}.premium-channel-card p{margin:0;color:#8fa6b8;font-size:10px}.channel-access-btn{margin-left:auto;white-space:nowrap}@media(max-width:700px){.premium-channel-box{align-items:flex-start;flex-wrap:wrap}.channel-lock{margin-left:0}.premium-channel-card{align-items:flex-start;flex-wrap:wrap}.channel-access-btn{margin-left:0}}
 .profile-pop{position:fixed;top:70px;right:16px;width:min(290px,calc(100vw - 32px));z-index:9999;padding:15px;border:1px solid #2b7fff;border-radius:14px;background:#071521;box-shadow:0 18px 50px rgba(0,0,0,.5);display:none}.profile-pop.open{display:block}.profile-pop-head{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid #1b3a54}.profile-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#0788ff,#7d1cff);color:#fff;font-weight:900}.profile-pop h3{margin:0;color:#fff;font-size:14px}.profile-pop .email{margin-top:3px;color:#8fa6b8;font-size:10px;word-break:break-all}.profile-pop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.profile-pop-item{padding:9px;border:1px solid #1b3a54;border-radius:9px;background:#06111c}.profile-pop-item span{display:block;color:#718ba0;font-size:8px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.profile-pop-item b{display:block;color:#eaf6ff;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-pop .free{color:#ffd36a}.profile-pop .premium{color:#39dfa0}.profile-logout{width:100%;margin-top:12px;border:1px solid #8b3344;background:#24101a;color:#ff9aaa;border-radius:9px;padding:9px;font-size:11px;font-weight:900;cursor:pointer}.profile-btn{border:0;background:transparent;color:#fff!important;font-size:10px;font-weight:800;cursor:pointer;padding:2px 4px}.profile-close{position:absolute;top:8px;right:9px;border:0;background:transparent;color:#7891a5;font-size:18px;cursor:pointer}@media(max-width:700px){.member-pill span{display:none}.member-pill{padding:6px 8px}.pay-plan{min-height:132px;padding:16px 8px}.pay-plan .premium-text{font-size:17px}.pay-plan .plan-days{font-size:12px;padding:7px 9px}}
 
-/* WAJID showroom background + signal visuals — visual-only */
-html,body{min-height:100%;background:#02050b!important}
-body{background-image:linear-gradient(180deg,rgba(1,6,14,.28),rgba(1,6,14,.74)),url("/assets/wajid-bg.jpg")!important;background-position:center top!important;background-size:cover!important;background-attachment:fixed!important;background-repeat:no-repeat!important}
-body:before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.46),rgba(0,7,18,.12),rgba(0,0,0,.5));}
+/* Lightweight trading background — no personal image, no fixed blur/backdrop effects */
+html,body{min-height:100%;background:#020711!important}
+body{
+  background:
+    radial-gradient(circle at 82% 8%,rgba(0,145,255,.12),transparent 24%),
+    radial-gradient(circle at 15% 58%,rgba(0,220,170,.07),transparent 28%),
+    linear-gradient(180deg,#020711 0%,#03111d 48%,#020711 100%)!important;
+  background-attachment:scroll!important;
+}
+body:before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.22;
+  background:repeating-linear-gradient(90deg,transparent 0 74px,rgba(24,151,232,.10) 75px,transparent 76px),
+             linear-gradient(180deg,transparent 0 78%,rgba(0,222,171,.05) 100%);
+}
 .top,.dashboard,.footer{position:relative;z-index:2}
-.wajid-visual-layer{position:fixed;inset:0;z-index:1;pointer-events:none;overflow:hidden}
-.wv-candle{position:absolute;width:7px;border-radius:3px;box-shadow:0 0 16px currentColor;opacity:.72}
-.wv-candle:before{content:"";position:absolute;left:3px;width:1.5px;top:-22px;bottom:-22px;background:currentColor;box-shadow:0 0 8px currentColor}
-.wv-red{right:11%;top:20%;height:125px;color:#ff3f61;animation:wvSell 4s ease-in-out infinite}
-.wv-green{left:11%;bottom:20%;height:120px;color:#26e7a2;animation:wvBuy 4s ease-in-out infinite}
-.wv-label{position:absolute;font-weight:1000;letter-spacing:2px;font-size:13px;text-shadow:0 0 14px currentColor;opacity:0}
-.wv-sell{right:7%;top:15%;color:#ff526f;animation:wvSellLabel 4s ease-in-out infinite}
-.wv-buy{left:6%;bottom:14%;color:#35e8aa;animation:wvBuyLabel 4s ease-in-out infinite}
-.wv-full{left:50%;top:10%;transform:translateX(-50%);color:#ffd65a;font-size:14px;letter-spacing:1.5px;padding:7px 13px;border:1px solid rgba(255,214,90,.65);border-radius:999px;background:rgba(25,18,2,.72);box-shadow:0 0 25px rgba(255,190,40,.24);animation:wvFull 4s ease-in-out infinite}
-@keyframes wvSell{0%,20%{transform:translateY(-12px) scaleY(.8);opacity:.2}35%,60%{transform:translateY(55px) scaleY(1.1);opacity:.82}80%,100%{transform:translateY(8px) scaleY(.9);opacity:.2}}
-@keyframes wvBuy{0%,20%{transform:translateY(12px) scaleY(.82);opacity:.2}35%,60%{transform:translateY(-55px) scaleY(1.1);opacity:.82}80%,100%{transform:translateY(-8px) scaleY(.9);opacity:.2}}
-@keyframes wvSellLabel{0%,18%{opacity:0;transform:translateY(-5px)}28%,62%{opacity:1;transform:translateY(0)}78%,100%{opacity:0}}
-@keyframes wvBuyLabel{0%,18%{opacity:0;transform:translateY(5px)}28%,62%{opacity:1;transform:translateY(0)}78%,100%{opacity:0}}
-@keyframes wvFull{0%,60%{opacity:0;transform:translate(-50%,8px) scale(.92)}68%,88%{opacity:1;transform:translate(-50%,0) scale(1)}100%{opacity:0;transform:translate(-50%,-6px) scale(.96)}}
-@media(max-width:700px){body{background-position:center top!important;background-size:cover!important}.wv-red{right:5%;top:23%;height:92px}.wv-green{left:5%;bottom:22%;height:90px}.wv-sell{right:2%;top:17%;font-size:11px}.wv-buy{left:2%;bottom:16%;font-size:11px}.wv-full{top:9%;font-size:11px;padding:6px 10px}}
-</style></head>
-<body style="visibility:hidden"><div class="wajid-visual-layer" aria-hidden="true"><div class="wv-candle wv-red"></div><div class="wv-candle wv-green"></div><div class="wv-label wv-sell">SELL</div><div class="wv-label wv-buy">BUY</div><div class="wv-label wv-full">✓ FULL TP HIT · 4R</div></div><script>
+.page-glow{opacity:.28!important;filter:none!important}
+.shell{width:min(1440px,calc(100% - 24px))}
+.top{margin-top:10px;padding:20px 12px 18px;border:1px solid rgba(40,150,255,.24);border-radius:20px;background:rgba(3,10,19,.92);box-shadow:0 18px 45px rgba(0,0,0,.24)}
+.brand{font-size:28px;text-shadow:0 0 18px rgba(20,145,255,.14)}
+.brand span{color:#159cff}
+.brand-sub{color:#b0c0cf}.brand-note{color:#8a9caf}
+.status,.server-pill{background:#061522;border-color:rgba(55,145,210,.45)}
+.dashboard{gap:18px;padding-top:18px}
+.card{background:linear-gradient(145deg,#061a2b,#04111e);border-color:rgba(22,145,230,.52);border-radius:18px;box-shadow:0 14px 38px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.04)}
+.card:before{background:linear-gradient(120deg,rgba(20,155,255,.08),transparent 42%,rgba(0,255,190,.02))}
+.metrics div,.levels div{background:#071d30;border-color:rgba(24,104,160,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.tf-mini{background:#03101d;border-color:#168fff;box-shadow:0 0 14px rgba(0,143,255,.16)}
+.tf-mini button.active{box-shadow:0 0 18px rgba(0,143,255,.25)}
+.lock-badge,.chart-live{background:#06231d;box-shadow:0 0 12px rgba(50,220,155,.10)}
+.history-section,.week-card,.history-card,.calculator-card{background:#061625}
+.quote-card{box-shadow:0 0 24px rgba(240,189,53,.06)}
+.footer{background:#030c15;border-color:rgba(50,120,170,.28)}
+@media(max-width:700px){
+ .shell{width:calc(100% - 12px)}
+ .top{margin-top:6px;padding:16px 10px 14px;border-radius:16px}
+ .top-right{align-items:center}
+ .dashboard{gap:12px;padding-top:10px}
+ .card{border-radius:16px}
+ .signal h1{font-size:46px}
+ .brand{font-size:21px}
+}</style></head>
+<body style="visibility:hidden"><script>
 (async()=>{
   try{
     const r=await fetch('/api/auth/me',{cache:'no-store'});
