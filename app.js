@@ -96,6 +96,9 @@ function renderSummary(summary) {
   ].map(([label,value,cls]) => `<span class="${cls}">${label} <b>${esc(value)}</b></span>`).join('');
   // Total Balance is calculated by account-report.js from the daily $100 account results.
 }
+function canViewTradePrices() { const user = window.WAJID_USER || {}; return user.role === 'admin' || user.subscriptionStatus === 'active'; }
+function tradePriceCells(t) { const show = canViewTradePrices(); return [t.entry,t.stopLoss,t.tp1,t.tp2,t.tp3,t.tp4].map(v => `<td>${show ? fmt(v) : '—'}</td>`).join(''); }
+
 function renderTradeRows(trades) {
   const rows = (trades || []).slice().sort((a,b) => Number(b.signalTime||0)-Number(a.signalTime||0));
   const visibleRows = historyExpanded ? rows : rows.slice(0, 5);
@@ -103,7 +106,7 @@ function renderTradeRows(trades) {
     const rc = resultClass(t), sc = t.direction === 'BUY' ? 'buy' : 'sell', isClosed = String(t?.status || '').toUpperCase() === 'CLOSED', r = Number(t.realizedR || 0), hit = Array.isArray(t.hitTPs) ? t.hitTPs.join(', ') : '';
     const resultLabel = isClosed ? String(t.result || 'CLOSED') : 'OPEN';
     const rLabel = isClosed ? `${r > 0 ? '+' : ''}${fmt(r)}R` : '—';
-    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td><td>${fmt(t.entry)}</td><td>${fmt(t.stopLoss)}</td><td>${fmt(t.tp1)}</td><td>${fmt(t.tp2)}</td><td>${fmt(t.tp3)}</td><td>${fmt(t.tp4)}</td><td>${esc(hit || '—')}</td><td class="${rc}">${esc(resultLabel)}</td><td class="${rc}">${rLabel}</td></tr>`;
+    return `<tr><td>${esc(time(t.signalTime))}</td><td class="${sc}">${esc(t.direction)}</td>${tradePriceCells(t)}<td>${esc(hit || '—')}</td><td class="${rc}">${esc(resultLabel)}</td><td class="${rc}">${rLabel}</td></tr>`;
   }).join('') : '<tr><td colspan="11">No confirmed trades.</td></tr>';
   const wrap = $('historyView');
   const oldButton = wrap.querySelector('[data-history-more]');
@@ -147,7 +150,9 @@ function renderDailyHistory(trades) {
       else if (!tpCount && resultText === 'TP2 HIT CLOSE') tpCount = 2;
       const tpCell = (n) => hits.includes('TP'+n) || tpCount >= n ? '<b class="win">HIT</b>' : '<span>—</span>';
       const tpSummary = tpCount ? `${tpCount} TP${tpCount === 1 ? '' : 's'} HIT` : 'No TP HIT';
-      return `<div class="daily-trade daily-trade-detail"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b><span>—</span><span>—</span>${tpCell(1)}${tpCell(2)}${tpCell(3)}${tpCell(4)}<strong class="${resultClass(t)}">${esc(tpSummary)}</strong><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
+      const showPrices = canViewTradePrices();
+      const priceCell = (v) => showPrices ? `<span>${fmt(v)}</span>` : '<span>—</span>';
+      return `<div class="daily-trade daily-trade-detail"><span>${esc(time(t.signalTime))}</span><b class="${t.direction==='BUY'?'buy':'sell'}">${esc(t.direction)}</b>${priceCell(t.entry)}${priceCell(t.stopLoss)}${tpCell(1)}${tpCell(2)}${tpCell(3)}${tpCell(4)}<strong class="${resultClass(t)}">${esc(tpSummary)}</strong><strong class="${resultClass(t)}">${esc(t.result)}</strong><span class="trade-r ${r >= 0 ? 'win' : 'loss'}">${rLabel}</span></div>`;
     }).join('');
     return `<section class="history-section"><div class="history-section-head"><div><b>${esc(formatDayLabel(key))}</b><small>${stats.signals} signal${stats.signals===1?'':'s'} · ${stats.wins}W · ${stats.losses}L · <strong class="${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel}</strong></small></div><div><div class="day-rate">${stats.winRate}% Win Rate</div><div class="day-r ${dayR >= 0 ? 'win' : 'loss'}">${dayRLabel} Total</div></div></div><div class="daily-trades-scroll"><div class="daily-trade daily-trade-header"><b>TIME</b><b>SIDE</b><b>ENTRY</b><b>SL</b><b>TP1</b><b>TP2</b><b>TP3</b><b>TP4</b><b>TP HIT</b><b>RESULT</b><b>R</b></div>${tradesHtml}</div></section>`;
   }).join('');
