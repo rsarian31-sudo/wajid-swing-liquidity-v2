@@ -65,6 +65,26 @@ const MYT_PARTS_FORMATTER = new Intl.DateTimeFormat('en-CA', {
   second: '2-digit',
   hour12: false
 });
+if (typeof chart !== 'undefined') {
+  chart.applyOptions({
+    localization: {
+      timeFormatter: (value) => {
+        const seconds = Number(value);
+        return Number.isFinite(seconds)
+          ? MYT_FORMATTER.format(new Date(seconds * 1000))
+          : String(value ?? '');
+      }
+    },
+    timeScale: {
+      tickMarkFormatter: (value) => {
+        const seconds = Number(value);
+        return Number.isFinite(seconds)
+          ? MYT_FORMATTER.format(new Date(seconds * 1000))
+          : String(value ?? '');
+      }
+    }
+  });
+}
 const time = (x) => {
   const seconds = Number(x);
   return Number.isFinite(seconds) && seconds > 0 ? MYT_FORMATTER.format(new Date(seconds * 1000)) : '—';
