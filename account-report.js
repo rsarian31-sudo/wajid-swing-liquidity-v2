@@ -60,8 +60,11 @@
 
   function render(rows, allClosed) {
     const rs = rows.map(accountR);
-    const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * 2, 0);
-    const loss = rs.filter(r => r < 0).reduce((a, r) => a + r * 8, 0);
+    // Daily Account Report uses the same fixed model shown in the UI:
+    // $100 starting balance and 2% risk per trade = $2 per 1R.
+    const oneR = 100 * 2 / 100;
+    const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * oneR, 0);
+    const loss = rs.filter(r => r < 0).reduce((a, r) => a + r * oneR, 0);
     const net = profit + loss;
     const selectedEnd = rows.reduce((max, t) => Math.max(max, Number(t.exitTime || t.signalTime || t.createdAt || 0)), 0);
     const cumulative = (Array.isArray(allClosed) ? allClosed : [])
