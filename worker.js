@@ -3,7 +3,7 @@ import { onRequest as healthRequest } from './functions/api/health.js';
 import { CONFIG, analyze, buildHistory } from './src/strategy.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
-import { handleAuthRequest } from './auth.js';
+import { handleAuthRequest, getAuthUser } from './auth.js';
 import { handlePaymentRequest } from './payments.js';
 
 const INTERVALS = ['1min', '5min'];
@@ -30,6 +30,7 @@ export default {
     if (url.pathname.startsWith('/api/payment/')) return handlePaymentRequest(request, env);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
+    if (url.pathname === '/api/telegram/broadcast' && request.method === 'POST') return telegramAdminBroadcast(request, env);
     if (url.pathname === '/telegram/admin' && request.method === 'GET') return telegramAdminPage();
     if (url.pathname === '/api/data') return dataRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
     if (url.pathname === '/api/health') return healthRequest({ request, env, waitUntil: ctx.waitUntil.bind(ctx) });
@@ -112,6 +113,24 @@ async function processTelegramChannelMember(member,env){
   }
   state.telegram=telegram;
   await putState(stub,state);
+}
+
+
+async function telegramAdminBroadcast(request, env) {
+  if (!env?.TELEGRAM_BOT_TOKEN) return Response.json({ ok:false, error:'TELEGRAM_BOT_TOKEN is not configured' }, { status:503 });
+  const user = await getAuthUser(request, env);
+  if (!user || user.role !== 'admin') return Response.json({ ok:false, error:'ADMIN_ONLY' }, { status:403, headers:{'Cache-Control':'no-store'} });
+  const body = await request.json().catch(()=>({}));
+  const text = String(body?.text || '').trim();
+  if (!text) return Response.json({ ok:false, error:'MESSAGE_REQUIRED' }, { status:400 });
+  if (text.length > 4000) return Response.json({ ok:false, error:'MESSAGE_TOO_LONG' }, { status:400 });
+  try {
+    const result = await telegramApiCall(env, 'sendMessage', { chat_id: TELEGRAM_CHANNEL_ID, text, disable_web_page_preview: false });
+    return Response.json({ ok:true, messageId: result?.message_id || null, channelId: TELEGRAM_CHANNEL_ID }, { headers:{'Cache-Control':'no-store'} });
+  } catch (error) {
+    console.error('telegram admin broadcast failed', JSON.stringify({ error:error?.message || String(error) }));
+    return Response.json({ ok:false, error:'TELEGRAM_SEND_FAILED', detail:String(error?.message || error) }, { status:502, headers:{'Cache-Control':'no-store'} });
+  }
 }
 
 async function telegramUsers(request, env) {
