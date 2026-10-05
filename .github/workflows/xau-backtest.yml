@@ -1,0 +1,22 @@
+name: XAU Backtest
+
+on:
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cp src/strategy.js /tmp/strategy.mjs
+      - run: node scripts/backtest.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xau-backtest-results
+          path: |
+            /tmp/backtest-summary.json
+            /tmp/backtest-trades.json
