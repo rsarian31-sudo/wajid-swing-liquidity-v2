@@ -9,7 +9,7 @@
 
 export const CONFIG = {
   outputSize: 300,
-  ruleVersion: 'volume-ob-creation-v2',
+  ruleVersion: 'volume-ob-retest-v3',
   pivotStrength: 3,
   atrLength: 14,
   supertrendMultiplier: 3,
@@ -22,12 +22,12 @@ export const CONFIG = {
   maxStopPoints: 10
 };
 
-// 1M keeps the existing behavior exactly. 5M uses the same OB engine,
-// but requires a real box retest + closed reaction before creating a trade signal.
-// This prevents 5M entries from firing on the displacement candle itself.
+// Both timeframes now use the same causal entry rule:
+// confirmed OB -> price returns to the box -> reaction candle CLOSE.
+// No signal is allowed to use the historical displacement candle as a live entry.
 const TIMEFRAME_CONFIG = {
-  '1min': { requireRetest: false, minReactionBody: CONFIG.minReactionBody, minVolumePercent: CONFIG.minVolumePercent },
-  '5min': { requireRetest: true, minReactionBody: 0.45, minVolumePercent: 58 }
+  '1min': { requireRetest: true, minReactionBody: 0.45, minVolumePercent: 58 },
+  '5min': { requireRetest: true, minReactionBody: 0.50, minVolumePercent: 60 }
 };
 
 function strategyConfig(interval) {
@@ -275,9 +275,18 @@ function buildAnalysis(candles, options = {}) {
     confirmation: 'ORDER_BLOCK_CREATED'
   })).filter(s => Number.isFinite(Number(s.time)));
 
-  const allSignals = cfg.requireRetest ? processed.signals : boxSignals;
-  // Only the requested SL-distance filter is applied here; all other
-  // signal-generation conditions remain unchanged.
+  // Live-safe signals are ONLY closed-candle retest/reaction events.
+  // Never emit the OB creation/displacement candle as an entry.
+  let allSignals = processed.signals;
+  // 1M must agree with the latest confirmed 5M structure when that context
+  // is available. This is a directional filter, not a new entry trigger.
+  if (cfg.requireRetest && options.interval === '1min' && options.structureDirection) {
+    const structure = String(options.structureDirection).toUpperCase();
+    allSignals = allSignals.filter(s =>
+      (structure === 'UP' && s.direction === 'BUY') ||
+      (structure === 'DOWN' && s.direction === 'SELL')
+    );
+  }
   const signals = allSignals.filter(s => !!makeTradePlan(s, candles, cfg));
   const latestTime = candles.at(-1)?.time;
   const latestSignal = signals
@@ -288,11 +297,12 @@ function buildAnalysis(candles, options = {}) {
   const confidence = latestSignal
     ? clamp(
         Math.round(
-          Math.max(latestSignal.buyPercent, latestSignal.sellPercent) * 0.65 +
-          35
+          40 +
+          Math.max(latestSignal.buyPercent, latestSignal.sellPercent) * 0.35 +
+          Number(latestSignal.reactionBody || 0) * 20
         ),
-        0,
-        99
+        50,
+        95
       )
     : 0;
 
@@ -363,11 +373,11 @@ export function analyze(candles = [], options = {}) {
       volumeAvailable:candles.some(c=>n(c.volume,0)>0),
       volumeConfirmed:latestZone ? Math.max(latestZone.buyPercent,latestZone.sellPercent) >= cfg.minVolumePercent : false,
       riskFilter:{passed:!!plan,rejected:!!latestSignal&&!plan,reason:plan?null:(latestSignal?'SL_DISTANCE_OUT_OF_RANGE':'WAIT')},
-      entryRule:latestSignal?(cfg.requireRetest?'BOX_RETEST_REACTION_CLOSE':'ORDER_BLOCK_CREATION_CLOSE'):null,
+      entryRule:latestSignal?'BOX_RETEST_REACTION_CLOSE':null,
       entryTime:latestSignal?.time??null,
       bigMoveScore:0,
       rejection:signal.rejection,
-      logic:cfg.requireRetest?'VOLUME_OB_RETEST_REACTION':'VOLUME_OB_CREATION_SIGNAL'
+      logic:'VOLUME_OB_RETEST_REACTION_CAUSAL'
     }
   };
 }
@@ -506,7 +516,7 @@ export function buildHistory(candles = [], options = {}) {
       risk:plan?.risk??null,realizedR:0,
       tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],
       result:'OPEN',status:'OPEN',exit:null,exitTime:null,reason:'Waiting for TP4 or SL',
-      entryRule:cfg.requireRetest?'BOX_RETEST_REACTION_CLOSE':'ORDER_BLOCK_CREATION_CLOSE',zoneId:s.zoneId
+      entryRule:'BOX_RETEST_REACTION_CLOSE',zoneId:s.zoneId
     };
     const startIndex = candles.findIndex(c => Number(c.time) === Number(s.time));
     return resolveHistoricalTrade(base, candles, startIndex);
