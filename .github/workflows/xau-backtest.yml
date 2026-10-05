@@ -1,6 +1,12 @@
 name: XAU Backtest
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/strategy.js'
+      - 'scripts/backtest.mjs'
+      - '.github/workflows/xau-backtest.yml'
   workflow_dispatch:
 
 jobs:
