@@ -8,7 +8,7 @@ import { handlePaymentRequest } from './payments.js';
 
 const INTERVALS = ['1min', '5min'];
 const SYMBOL = 'XAU/USD';
-const RULE_VERSION = 'volume-ob-creation-v2';
+const RULE_VERSION = 'volume-ob-retest-v3';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
@@ -46,9 +46,9 @@ export default {
     if (env.TELEGRAM_BOT_TOKEN) await ensureTelegramWebhook(env);
     if (env.TELEGRAM_BOT_TOKEN && env.DB && new Date().getUTCMinutes() % 15 === 0) await cleanupExpiredChannelMembers(env);
     const minute = new Date().getUTCMinutes();
-    // Only poll higher timeframes when a new candle can actually close.
-    // This reduces unnecessary market-data requests without changing signal logic.
-    const intervals = ['1min'];
+    // Process 5M first so its confirmed structure is available to the 1M engine.
+    // The 1M engine then uses that structure only as a directional filter.
+    const intervals = ['5min', '1min'];
         for (const interval of intervals) {
       const id = env.TRADE_STATE.idFromName('xauusd');
       const stateStub = env.TRADE_STATE.get(id);
