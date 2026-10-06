@@ -9,7 +9,7 @@
 
 export const CONFIG = {
   outputSize: 300,
-  ruleVersion: 'volume-ob-retest-v3',
+  ruleVersion: 'volume-ob-retest-v4',
   pivotStrength: 3,
   atrLength: 14,
   supertrendMultiplier: 3,
@@ -18,7 +18,10 @@ export const CONFIG = {
   maxRetestBars: 12,
   maxZones: 12,
   rr: [1, 2, 3, 4],
-  minStopPoints: 1.8,
+  // Backtest loss-cluster analysis showed the weakest trades were concentrated
+  // in very tight 1.8–4 point OB stops. Keep only setups with enough room
+  // for the XAU retest/reaction to develop without over-tight risk.
+  minStopPoints: 4,
   maxStopPoints: 10
 };
 
@@ -156,7 +159,10 @@ function createZones(candles, st, cfg = CONFIG) {
       direction: dir,
       startTime: candles[i].time,
       pivotTime: candles[i].time,
-      createdTime: candles[displacement].time,
+      // A pivot is only knowable after the right-side confirmation candles
+      // have closed. Never allow a retest before that confirmation time.
+      createdTime: candles[Math.max(displacement, i + cfg.pivotStrength)].time,
+      pivotConfirmedTime: candles[i + cfg.pivotStrength].time,
       top: Number(top.toFixed(3)),
       bottom: Number(bottom.toFixed(3)),
       split: Number((bottom + (top-bottom) * vp.buyPercent / 100).toFixed(3)),
@@ -261,9 +267,8 @@ function buildAnalysis(candles, options = {}) {
   const zones = createZones(candles, st, cfg);
   const processed = processRetests(candles, zones, cfg);
 
-  // 1M preserves the existing OB-creation signal behavior.
-  // 5M only becomes actionable after the price returns into the box
-  // and a closed candle confirms the reaction.
+  // Both 1M and 5M are actionable only after the price returns into the
+  // box and a closed candle confirms the reaction.
   const boxSignals = processed.zones.map(z => ({
     time: z.createdTime,
     direction: z.direction,

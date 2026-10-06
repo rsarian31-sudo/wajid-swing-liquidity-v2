@@ -8,7 +8,7 @@ import { handlePaymentRequest } from './payments.js';
 
 const INTERVALS = ['1min', '5min'];
 const SYMBOL = 'XAU/USD';
-const RULE_VERSION = 'volume-ob-retest-v3';
+const RULE_VERSION = 'volume-ob-retest-v4';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
