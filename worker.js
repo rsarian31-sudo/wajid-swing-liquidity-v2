@@ -688,14 +688,14 @@ async function processBtcTelegramSignals(env) {
     return rows.map(k => ({ t:Number(k[0]), o:Number(k[1]), h:Number(k[2]), l:Number(k[3]), c:Number(k[4]), v:Number(k[5]), closeTime:Number(k[6]) }));
   };
   const ema = (values, period) => {
-    const out = Array(values.length).fill(null);
-    if (values.length < period) return out;
-    let sum = 0;
-    for (let i=0;i<period;i++) sum += values[i];
-    let prev = sum / period;
-    out[period-1] = prev;
-    const alpha = 2 / (period + 1);
-    for (let i=period;i<values.length;i++) { prev = values[i] * alpha + prev * (1-alpha); out[i] = prev; }
+    const out = Array(values.length).fill(null), alpha = 2 / (period + 1);
+    let prev = null;
+    for (let i=0;i<values.length;i++) {
+      const value = values[i];
+      if (!Number.isFinite(value)) { out[i] = prev; continue; }
+      prev = prev === null ? value : alpha * value + (1-alpha) * prev;
+      out[i] = prev;
+    }
     return out;
   };
   const aggregate45 = rows => {
