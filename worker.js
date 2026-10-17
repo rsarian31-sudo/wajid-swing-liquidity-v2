@@ -45,6 +45,8 @@ export default {
     // Telegram is optional for the trading engine. If configured, keep the webhook healthy.
     if (env.TELEGRAM_BOT_TOKEN) await ensureTelegramWebhook(env);
     if (env.TELEGRAM_BOT_TOKEN && env.DB && new Date().getUTCMinutes() % 15 === 0) await cleanupExpiredChannelMembers(env);
+    // BTC signals use the BTC dashboard's EMA 13/21 closed-candle rules and are sent to the existing XAU Telegram channel.
+    if (env.TELEGRAM_BOT_TOKEN) await processBtcTelegramSignals(env);
     const minute = new Date().getUTCMinutes();
     // Process 5M first so its confirmed structure is available to the 1M engine.
     // The 1M engine then uses that structure only as a directional filter.
@@ -669,6 +671,112 @@ async function cleanupExpiredChannelMembers(env){
   }
   if(changed)await putState(stub,state);
 }
+
+async function processBtcTelegramSignals(env) {
+  const id = env.TRADE_STATE.idFromName('xauusd');
+  const stub = env.TRADE_STATE.get(id);
+  const state = await getState(stub);
+  const telegram = ensureTelegramState(state, env);
+  if (!telegram.btcLastSignalIds || typeof telegram.btcLastSignalIds !== 'object') telegram.btcLastSignalIds = {};
+  const now = Date.now();
+  const api = 'https://api.binance.com/api/v3/klines';
+  const fetchCandles = async (interval, limit) => {
+    const response = await fetch(api + '?symbol=BTCUSDT&interval=' + interval + '&limit=' + limit, { headers: { 'Accept': 'application/json' } });
+    if (!response.ok) throw new Error('BTC Binance ' + interval + ' HTTP ' + response.status);
+    const rows = await response.json();
+    if (!Array.isArray(rows)) throw new Error('BTC Binance returned invalid ' + interval + ' candles');
+    return rows.map(k => ({ t:Number(k[0]), o:Number(k[1]), h:Number(k[2]), l:Number(k[3]), c:Number(k[4]), v:Number(k[5]), closeTime:Number(k[6]) }));
+  };
+  const ema = (values, period) => {
+    const out = Array(values.length).fill(null);
+    if (values.length < period) return out;
+    let sum = 0;
+    for (let i=0;i<period;i++) sum += values[i];
+    let prev = sum / period;
+    out[period-1] = prev;
+    const alpha = 2 / (period + 1);
+    for (let i=period;i<values.length;i++) { prev = values[i] * alpha + prev * (1-alpha); out[i] = prev; }
+    return out;
+  };
+  const aggregate45 = rows => {
+    const groups = new Map();
+    for (const c of rows) {
+      const start = Math.floor(c.t / 2700000) * 2700000;
+      if (!groups.has(start)) groups.set(start, []);
+      groups.get(start).push(c);
+    }
+    return [...groups.entries()].filter(([start, a]) => a.length === 3 && a[2].closeTime < now)
+      .map(([start, a]) => ({ t:start, o:a[0].o, h:Math.max(...a.map(x=>x.h)), l:Math.min(...a.map(x=>x.l)), c:a[2].c, v:a.reduce((s,x)=>s+x.v,0), closeTime:a[2].closeTime }));
+  };
+  const makeSignal = (candles, label, nextOpen) => {
+    if (candles.length < 40) return null;
+    const close = candles.map(x=>x.c), fast = ema(close,13), slow = ema(close,21);
+    const fastSm = ema(fast.map(x=>x===null?NaN:x),14), slowSm = ema(slow.map(x=>x===null?NaN:x),14);
+    const i = candles.length-1;
+    if ([fast[i],slow[i],fastSm[i],slowSm[i]].some(x=>!Number.isFinite(x))) return null;
+    const top = Math.max(fast[i],slow[i],fastSm[i],slowSm[i]), bottom = Math.min(fast[i],slow[i],fastSm[i],slowSm[i]);
+    let upCross=-1, downCross=-1;
+    for(let j=i;j>=0&&j>i-3;j--) {
+      if(upCross<0&&fast[j]>slow[j]&&fast[j-1]<=slow[j-1]) upCross=j;
+      if(downCross<0&&fast[j]<slow[j]&&fast[j-1]>=slow[j-1]) downCross=j;
+    }
+    const buy=fast[i]>slow[i]&&close[i]>top&&upCross>=0, sell=fast[i]<slow[i]&&close[i]<bottom&&downCross>=0;
+    if(!buy&&!sell) return null;
+    const side=buy?'BUY':'SELL', dir=buy?1:-1, entry=Number.isFinite(nextOpen)?nextOpen:close[i], back=i-4;
+    if(back<0) return null;
+    const sl=buy?candles[back].l:candles[back].h;
+    if(!Number.isFinite(sl)||(buy?sl>=entry:sl<=entry)) return null;
+    const crossIndex=buy?upCross:downCross, crossTime=candles[crossIndex].t;
+    return { id:label+'-ema1321-'+crossTime+'-'+side, label, side, entry, sl, tp:[10,20,30,40,50].map(d=>entry+dir*d), candleTime:candles[i].t,
+      reason:side==='BUY'?'EMA 13 above EMA 21 and close above both smoothed EMA lines.':'EMA 13 below EMA 21 and close below both smoothed EMA lines.' };
+  };
+  try {
+    const [raw15, raw30, ticker] = await Promise.all([
+      fetchCandles('15m', 300), fetchCandles('30m', 200),
+      fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(async r=>{if(!r.ok)throw new Error('BTC ticker HTTP '+r.status);return r.json()})
+    ]);
+    const closed15=raw15.filter(c=>c.closeTime<now), closed30=raw30.filter(c=>c.closeTime<now);
+    const closed45=aggregate45(closed15);
+    const next15=raw15.find(c=>c.t>closed15[closed15.length-1]?.t)?.o;
+    const next30=raw30.find(c=>c.t>closed30[closed30.length-1]?.t)?.o;
+    const next45=raw15.find(c=>c.t>closed45[closed45.length-1]?.t)?.o;
+    const signals=[
+      makeSignal(closed15,'15M',next15),
+      makeSignal(closed30,'30M',next30),
+      makeSignal(closed45,'45M',next45)
+    ].filter(Boolean);
+    for (const signal of signals) {
+      if (String(telegram.btcLastSignalIds[signal.label]||'')===signal.id) continue;
+      const direction=signal.side==='BUY'?'🟢 BUY':'🔴 SELL';
+      const text=[
+        '₿ WAJID BTC SIGNAL · '+signal.label,
+        '',
+        direction+' · BTC/USDT',
+        'Entry: '+Number(signal.entry).toFixed(2),
+        'SL: '+Number(signal.sl).toFixed(2),
+        ...signal.tp.map((p,i)=>'TP'+(i+1)+': '+Number(p).toFixed(2)),
+        '',
+        'Rule: EMA 13/21 · Closed candle confirmation',
+        'Source: Binance BTCUSDT',
+        'Current BTC price: '+Number(ticker.price||0).toFixed(2),
+        'Signal candle: '+new Date(signal.candleTime).toISOString()
+      ].join('\n');
+      try {
+        await telegramApiCall(env,'sendMessage',{chat_id:TELEGRAM_CHANNEL_ID,text,disable_web_page_preview:true});
+        telegram.btcLastSignalIds[signal.label]=signal.id;
+        telegram.btcLastSignalIds.updatedAt=Date.now();
+        console.log('BTC Telegram signal delivered', JSON.stringify({timeframe:signal.label,signalId:signal.id}));
+      } catch (error) {
+        console.error('BTC Telegram delivery failed', JSON.stringify({timeframe:signal.label,error:String(error?.message||error)}));
+      }
+    }
+    state.telegram=telegram;
+    await putState(stub,state);
+  } catch (error) {
+    console.error('BTC signal scan failed', String(error?.message||error));
+  }
+}
+
 async function telegramApiCall(env,method,payload){
   const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/'+method,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
   const data=await response.json().catch(()=>null);
