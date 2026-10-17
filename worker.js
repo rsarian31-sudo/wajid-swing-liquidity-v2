@@ -724,7 +724,7 @@ async function sendTelegram(env,event,subscribers){
     const payload={chat_id:chatId,text};
     // Telegram reply keyboards are only valid in private chats.
     // Premium channel posts must not include a reply keyboard.
-    if(chatId!==TELEGRAM_CHANNEL_ID) payload.reply_markup=telegramKeyboard();
+    if(chatId!==getTelegramChannelId(env)) payload.reply_markup=telegramKeyboard();
     const original=trade.telegramMessageIds?.[chatId];
     if(event.type!=='SIGNAL'&&Number.isFinite(Number(original))){
       payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};
