@@ -700,7 +700,7 @@ async function processBtcTelegramSignals(env) {
   const telegram = ensureTelegramState(state, env);
   if (!telegram.btcLastSignalIds || typeof telegram.btcLastSignalIds !== 'object') telegram.btcLastSignalIds = {};
   const now = Date.now();
-  const api = 'https://api.binance.com/api/v3/klines';
+  const api = 'https://data-api.binance.vision/api/v3/klines';
   const fetchCandles = async (interval, limit) => {
     const response = await fetch(api + '?symbol=BTCUSDT&interval=' + interval + '&limit=' + limit, { headers: { 'Accept': 'application/json' } });
     if (!response.ok) throw new Error('BTC Binance ' + interval + ' HTTP ' + response.status);
@@ -746,7 +746,7 @@ async function processBtcTelegramSignals(env) {
       fetchCandles('5m', 300),
       fetchCandles('15m', 300),
       fetchCandles('30m', 200),
-      fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(async r=>{if(!r.ok)throw new Error('BTC ticker HTTP '+r.status);return r.json()})
+      fetch('https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT').then(async r=>{if(!r.ok)throw new Error('BTC ticker HTTP '+r.status);return r.json()})
     ]);
     const closed5=raw5.filter(c=>c.closeTime<now);
     const closed15=raw15.filter(c=>c.closeTime<now);
