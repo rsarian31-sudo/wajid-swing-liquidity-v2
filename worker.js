@@ -28,6 +28,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname.startsWith('/api/auth/')) return handleAuthRequest(request, env);
     if (url.pathname.startsWith('/api/payment/')) return handlePaymentRequest(request, env);
+    if (url.pathname === '/api/btc-signals' && (request.method === 'GET' || request.method === 'OPTIONS')) return btcSignalsApi(request, env);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
     if (url.pathname === '/api/telegram/broadcast' && request.method === 'POST') return telegramAdminBroadcast(request, env);
@@ -672,6 +673,26 @@ async function cleanupExpiredChannelMembers(env){
   if(changed)await putState(stub,state);
 }
 
+async function btcSignalsApi(request, env) {
+  const headers = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type',
+    'Cache-Control': 'no-store'
+  };
+  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
+  if (!env.TRADE_STATE) return Response.json({ ok:false, error:'Trade state unavailable', signals:[] }, { status:503, headers });
+  try {
+    const stub = env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+    const state = await getState(stub);
+    const signals = Array.isArray(state.telegram?.btcSignalHistory) ? state.telegram.btcSignalHistory : [];
+    return Response.json({ ok:true, updatedAt:Date.now(), count:signals.length, signals }, { headers });
+  } catch (error) {
+    return Response.json({ ok:false, error:'Unable to read BTC signal history', signals:[] }, { status:500, headers });
+  }
+}
+
 async function processBtcTelegramSignals(env) {
   const id = env.TRADE_STATE.idFromName('xauusd');
   const stub = env.TRADE_STATE.get(id);
@@ -756,8 +777,21 @@ async function processBtcTelegramSignals(env) {
       makeSignal(closed30,'30M',nextOpen(closed30)),
       makeSignal(closed45,'45M',nextOpen(closed45))
     ].filter(Boolean);
+    if (!Array.isArray(telegram.btcSignalHistory)) telegram.btcSignalHistory = [];
     for (const signal of signals) {
       if (String(telegram.btcLastSignalIds[signal.label]||'')===signal.id) continue;
+      const historyItem = {
+        id:signal.id, symbol:'BTC/USDT', timeframe:signal.label, side:signal.side,
+        entry:signal.entry, sl:signal.sl, tp:signal.tp, candleTime:signal.candleTime,
+        detectedAt:Date.now(), status:'SIGNAL', source:'Binance BTCUSDT',
+        rule:'EMA 13/21 · Closed candle confirmation', reason:signal.reason
+      };
+      telegram.btcSignalHistory.unshift(historyItem);
+      telegram.btcSignalHistory = telegram.btcSignalHistory.slice(0,2000);
+      telegram.btcLastSignalIds[signal.label]=signal.id;
+      telegram.btcLastSignalIds.updatedAt=Date.now();
+      state.telegram=telegram;
+      await putState(stub,state);
       const direction=signal.side==='BUY'?'🟢 BUY':'🔴 SELL';
       const text=[
         '₿ WAJID BTC SIGNAL · '+signal.label,
@@ -774,10 +808,16 @@ async function processBtcTelegramSignals(env) {
       ].join('\n');
       try {
         await telegramApiCall(env,'sendMessage',{chat_id:TELEGRAM_CHANNEL_ID,text,disable_web_page_preview:true});
-        telegram.btcLastSignalIds[signal.label]=signal.id;
-        telegram.btcLastSignalIds.updatedAt=Date.now();
+        const savedSignal = telegram.btcSignalHistory.find(item=>item.id===signal.id);
+        if (savedSignal) savedSignal.telegramDelivered=true;
+        state.telegram=telegram;
+        await putState(stub,state);
         console.log('BTC Telegram signal delivered', JSON.stringify({timeframe:signal.label,signalId:signal.id}));
       } catch (error) {
+        const savedSignal = telegram.btcSignalHistory.find(item=>item.id===signal.id);
+        if (savedSignal) { savedSignal.telegramDelivered=false; savedSignal.telegramError=String(error?.message||error); }
+        state.telegram=telegram;
+        await putState(stub,state);
         console.error('BTC Telegram delivery failed', JSON.stringify({timeframe:signal.label,error:String(error?.message||error)}));
       }
     }
