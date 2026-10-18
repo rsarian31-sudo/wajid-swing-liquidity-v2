@@ -721,13 +721,41 @@ async function processBtcTelegramSignals(env) {
       reason:side==='BUY'?'EMA 13 above EMA 21 and close above both smoothed EMA lines.':'EMA 13 below EMA 21 and close below both smoothed EMA lines.' };
   };
   try {
-    const [raw5, ticker] = await Promise.all([
+    const [raw5, raw15, raw30, ticker] = await Promise.all([
       fetchCandles('5m', 300),
+      fetchCandles('15m', 300),
+      fetchCandles('30m', 200),
       fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT').then(async r=>{if(!r.ok)throw new Error('BTC ticker HTTP '+r.status);return r.json()})
     ]);
     const closed5=raw5.filter(c=>c.closeTime<now);
-    const next5=raw5.find(c=>c.t>closed5[closed5.length-1]?.t)?.o;
-    const signals=[makeSignal(closed5,'5M',next5)].filter(Boolean);
+    const closed15=raw15.filter(c=>c.closeTime<now);
+    const closed30=raw30.filter(c=>c.closeTime<now);
+    const aggregate45 = rows => {
+      const groups = new Map();
+      for (const c of rows) {
+        const start = Math.floor(c.t / 2700000) * 2700000;
+        if (!groups.has(start)) groups.set(start, []);
+        groups.get(start).push(c);
+      }
+      return [...groups.entries()]
+        .filter(([start, candles]) => candles.length === 3 && candles[0].t === start && candles[1].t === start + 900000 && candles[2].t === start + 1800000 && candles[2].closeTime < now)
+        .map(([start, candles]) => ({
+          t:start, o:candles[0].o, h:Math.max(...candles.map(c=>c.h)),
+          l:Math.min(...candles.map(c=>c.l)), c:candles[2].c,
+          v:candles.reduce((sum,c)=>sum+c.v,0), closeTime:candles[2].closeTime
+        }));
+    };
+    const closed45=aggregate45(closed15);
+    const nextOpen = rows => {
+      const last=rows[rows.length-1];
+      return last ? rows.find(c=>c.t>last.t)?.o : undefined;
+    };
+    const signals=[
+      makeSignal(closed5,'5M',nextOpen(closed5)),
+      makeSignal(closed15,'15M',nextOpen(closed15)),
+      makeSignal(closed30,'30M',nextOpen(closed30)),
+      makeSignal(closed45,'45M',nextOpen(closed45))
+    ].filter(Boolean);
     for (const signal of signals) {
       if (String(telegram.btcLastSignalIds[signal.label]||'')===signal.id) continue;
       const direction=signal.side==='BUY'?'🟢 BUY':'🔴 SELL';
