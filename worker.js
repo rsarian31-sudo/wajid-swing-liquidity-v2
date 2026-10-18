@@ -928,7 +928,7 @@ function enqueuePendingTelegram(telegram, event, chatId){
 }
 
 async function sendTelegramWithQueue(env,event,telegram){
-  const active=String(telegram?.channelId||TELEGRAM_CHANNEL_ID).trim()?[{chatId:String(telegram?.channelId||TELEGRAM_CHANNEL_ID),active:true,source:'channel'}]:(telegram?.subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
+  const active=[{chatId:TELEGRAM_CHANNEL_ID,active:true,source:'channel'}];
   if(!Array.isArray(telegram.sentKeys)) telegram.sentKeys=[];
   const pendingActive=active.filter(s=>!telegram.sentKeys.includes(telegramEventKey(event,String(s.chatId))));
   if(!pendingActive.length)return {messageIds:{},failedChatIds:[],ok:true,reason:active.length?'ALREADY_DELIVERED':'NO_ACTIVE_SUBSCRIBERS'};
