@@ -47,7 +47,7 @@ export default {
     if (env.TELEGRAM_BOT_TOKEN) await ensureTelegramWebhook(env);
     if (env.TELEGRAM_BOT_TOKEN && env.DB && new Date().getUTCMinutes() % 15 === 0) await cleanupExpiredChannelMembers(env);
     // BTC signals use the BTC dashboard's EMA 13/21 closed-candle rules and are sent to the existing XAU Telegram channel.
-    if (env.TELEGRAM_BOT_TOKEN) await processBtcTelegramSignals(env);
+    if (env.TRADE_STATE) await processBtcTelegramSignals(env);
     const minute = new Date().getUTCMinutes();
     // Process 5M first so its confirmed structure is available to the 1M engine.
     // The 1M engine then uses that structure only as a directional filter.
@@ -767,15 +767,15 @@ async function processBtcTelegramSignals(env) {
         }));
     };
     const closed45=aggregate45(closed15);
-    const nextOpen = rows => {
-      const last=rows[rows.length-1];
-      return last ? rows.find(c=>c.t>last.t)?.o : undefined;
+    const nextOpen = (closedRows, allRows) => {
+      const last=closedRows[closedRows.length-1];
+      return last ? allRows.find(c=>c.t>last.t)?.o : undefined;
     };
     const signals=[
-      makeSignal(closed5,'5M',nextOpen(closed5)),
-      makeSignal(closed15,'15M',nextOpen(closed15)),
-      makeSignal(closed30,'30M',nextOpen(closed30)),
-      makeSignal(closed45,'45M',nextOpen(closed45))
+      makeSignal(closed5,'5M',nextOpen(closed5,raw5)),
+      makeSignal(closed15,'15M',nextOpen(closed15,raw15)),
+      makeSignal(closed30,'30M',nextOpen(closed30,raw30)),
+      makeSignal(closed45,'45M',nextOpen(closed45,raw15))
     ].filter(Boolean);
     if (!Array.isArray(telegram.btcSignalHistory)) telegram.btcSignalHistory = [];
     for (const signal of signals) {
@@ -807,6 +807,7 @@ async function processBtcTelegramSignals(env) {
         'Signal candle: '+new Date(signal.candleTime).toISOString()
       ].join('\n');
       try {
+        if (!env.TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN secret is missing in the Worker');
         await telegramApiCall(env,'sendMessage',{chat_id:TELEGRAM_CHANNEL_ID,text,disable_web_page_preview:true});
         const savedSignal = telegram.btcSignalHistory.find(item=>item.id===signal.id);
         if (savedSignal) savedSignal.telegramDelivered=true;
