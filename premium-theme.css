@@ -193,3 +193,174 @@ td{color:#dedbd2!important}
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+
+/* V3 — Obsidian Terminal refresh: visual-only overrides */
+:root{
+  --wsl-bg:#080b0e;
+  --wsl-panel:#11171b;
+  --wsl-panel-2:#151e22;
+  --wsl-panel-3:#0c1215;
+  --wsl-gold:#38d9bd;
+  --wsl-gold-bright:#8cf3df;
+  --wsl-gold-muted:#2ba993;
+  --wsl-line:rgba(56,217,189,.20);
+  --wsl-line-soft:rgba(190,215,210,.09);
+  --wsl-text:#edf5f3;
+  --wsl-muted:#8b9d9b;
+  --wsl-green:#49dfa4;
+  --wsl-red:#ff7180;
+  --wsl-radius:18px;
+  --wsl-shadow:0 14px 36px rgba(0,0,0,.24);
+}
+html,body{
+  background:
+    radial-gradient(ellipse at 50% -20%,rgba(56,217,189,.11),transparent 40%),
+    linear-gradient(180deg,#090e11 0%,#080b0e 58%,#070a0c 100%)!important;
+  color:var(--wsl-text)!important;
+}
+body:before{
+  opacity:.12!important;
+  background-image:linear-gradient(rgba(130,170,164,.06) 1px,transparent 1px),linear-gradient(90deg,rgba(130,170,164,.06) 1px,transparent 1px)!important;
+  background-size:42px 42px!important;
+  mask-image:linear-gradient(to bottom,black,transparent 78%);
+}
+.shell{width:min(1480px,calc(100% - 40px))!important;max-width:1480px!important}
+.top{
+  min-height:unset!important;margin-top:18px!important;padding:20px 24px!important;
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  gap:18px!important;border:1px solid rgba(130,170,164,.13)!important;
+  border-radius:20px!important;background:rgba(14,20,23,.94)!important;
+  box-shadow:0 12px 34px rgba(0,0,0,.22)!important;
+}
+.brand{font-size:clamp(22px,2.3vw,30px)!important;letter-spacing:-.045em!important;font-weight:850!important;text-shadow:none!important}
+.brand span,.footer span{color:#7cebd6!important}
+.brand-sub{color:#c3d4d0!important;font-size:13px!important}
+.brand-note{color:#80938f!important}
+.status,.server-pill{
+  background:#111a1d!important;border:1px solid rgba(130,170,164,.18)!important;
+  color:#c2d1cd!important;backdrop-filter:none!important;border-radius:999px!important;
+}
+.status.live{color:#62e5b2!important;border-color:rgba(73,223,164,.3)!important}
+.server-pill i{background:#49dfa4!important;box-shadow:0 0 10px rgba(73,223,164,.4)!important}
+.dashboard{gap:20px!important;padding-top:20px!important}
+.left-column,.right-column{gap:18px!important}
+.card{
+  position:relative!important;overflow:hidden!important;
+  background:linear-gradient(155deg,#141d21 0%,#101619 65%,#0e1417 100%)!important;
+  border:1px solid rgba(142,177,169,.12)!important;border-radius:18px!important;
+  box-shadow:0 12px 32px rgba(0,0,0,.20)!important;
+}
+.card:before{
+  height:1px!important;opacity:.8!important;
+  background:linear-gradient(90deg,transparent,rgba(56,217,189,.48),transparent)!important;
+}
+.eyebrow,.accent-label{color:#79e8d2!important;letter-spacing:.14em!important}
+.signal-card{
+  border-color:rgba(56,217,189,.28)!important;
+  background:radial-gradient(ellipse at 92% 0%,rgba(56,217,189,.13),transparent 44%),linear-gradient(145deg,#172522,#11191b 58%,#101619)!important;
+}
+.signal h1{font-size:clamp(42px,6vw,66px)!important;letter-spacing:-.06em!important;font-weight:900!important}
+.signal h1.buy,.buy,.win{color:#55e2ac!important}
+.signal h1.sell,.sell,.loss{color:#ff7180!important}
+.signal h1.wait,.wait,.open{color:#8ce8d8!important}
+.metrics div,.levels div,.diag div,.summary span,.summary b{
+  background:rgba(7,13,15,.56)!important;border:1px solid rgba(142,177,169,.11)!important;border-radius:13px!important;
+}
+.metrics label,.levels span,.panel-title small,.section-heading p,.info-card p,.calc-subtitle,
+.telegram-card p,.account-grid span,.perf-grid span,.info-rows div,.account-date span,
+.brand-note,.footer small{color:#8b9d99!important}
+.metrics strong,.levels strong,.panel-title b,.section-heading h2,.info-card h2,
+.market-card h2,.performance-card h2,.telegram-card h2,.calculator-card h2{color:#edf5f3!important}
+.lock-badge,.chart-live{
+  background:rgba(56,217,189,.09)!important;border:1px solid rgba(56,217,189,.22)!important;
+  color:#8ce8d8!important;border-radius:999px!important;box-shadow:none!important;
+}
+.tf-mini,.toolbar,.history-tabs{background:#0b1215!important;border-color:rgba(142,177,169,.13)!important;border-radius:12px!important}
+.tf-mini button,.toolbar button,.history-tab,.history-tabs button,.refresh-btn,
+.pay-action,.channel-access-btn,.profile-btn,.profile-logout,.profile-close{
+  background:#172125!important;border:1px solid rgba(142,177,169,.14)!important;
+  color:#d6e4e0!important;border-radius:10px!important;box-shadow:none!important;
+  transition:background .18s ease,border-color .18s ease,transform .18s ease!important;
+}
+.tf-mini button.active,.toolbar button.active,.history-tab.active{
+  background:rgba(56,217,189,.13)!important;border-color:rgba(56,217,189,.52)!important;
+  color:#8ce8d8!important;box-shadow:inset 0 0 0 1px rgba(56,217,189,.06)!important;
+}
+button:hover,.pay-plan:hover,.telegram-connect:hover{
+  border-color:rgba(56,217,189,.48)!important;transform:translateY(-1px);
+}
+.refresh-btn,.pay-action,.channel-access-btn{
+  background:linear-gradient(135deg,#8cf3df,#36c9ad)!important;
+  border-color:#71e7d0!important;color:#06201b!important;font-weight:850!important;
+}
+.chart-card{overflow:hidden!important}
+.chart-card .panel-title{border-bottom:1px solid rgba(142,177,169,.12)!important}
+#chart{background:#090f12!important;border-radius:0 0 16px 16px!important}
+.diag,.summary,.history-section,.daily-trade,.week-card,.table-wrap,
+.account-grid div,.perf-grid div,.calc-grid div,.info-rows div{
+  background:rgba(8,14,16,.62)!important;border-color:rgba(142,177,169,.12)!important;
+}
+table{border-collapse:separate!important;border-spacing:0!important}
+th{color:#8ce8d8!important;background:rgba(56,217,189,.065)!important}
+th,td{border-color:rgba(142,177,169,.12)!important}
+td{color:#d6e2de!important}
+.card-icon,.card-icon.blue,.card-icon.purple,.card-icon.gold{
+  background:rgba(56,217,189,.09)!important;border:1px solid rgba(56,217,189,.18)!important;
+  color:#8ce8d8!important;border-radius:12px!important;
+}
+.account-grid div,.perf-grid div,.calc-grid div{
+  border:1px solid rgba(142,177,169,.12)!important;border-radius:13px!important;padding:12px!important;
+}
+.account-grid b,.perf-grid b,.calc-grid b{color:#edf5f3!important}
+.account-date input,.calc-inputs input,.pay-input,input,select,textarea{
+  background:#0b1215!important;color:#edf5f3!important;
+  border:1px solid rgba(142,177,169,.18)!important;border-radius:10px!important;
+}
+.account-date input:focus,.calc-inputs input:focus,.pay-input:focus,input:focus,select:focus,textarea:focus{
+  outline:none!important;border-color:rgba(56,217,189,.62)!important;box-shadow:0 0 0 3px rgba(56,217,189,.09)!important;
+}
+.quote-card{background:linear-gradient(145deg,rgba(56,217,189,.08),rgba(15,22,24,.98))!important}
+.quote-mark,.quote-card cite{color:#8ce8d8!important}
+.quote-card blockquote{color:#dce9e5!important}
+.pay-box,.pay-details,.premium-channel-box,.member-pill{
+  background:#111a1d!important;border-color:rgba(56,217,189,.18)!important;color:#edf5f3!important;
+}
+.pay-plan,.pay-plan.month{
+  background:linear-gradient(145deg,#8cf3df,#36c9ad)!important;
+  border:1px solid rgba(140,243,223,.65)!important;color:#06201b!important;
+  box-shadow:0 10px 24px rgba(56,217,189,.10)!important;
+}
+.pay-plan .premium-text,.pay-plan b,.pay-plan .plan-days{color:#06201b!important;text-shadow:none!important}
+.pay-plan .plan-days{background:rgba(255,255,255,.3)!important;border-color:rgba(6,32,27,.18)!important}
+.pay-address{background:#080f12!important;border:1px solid rgba(142,177,169,.13)!important;color:#a7e8dc!important}
+.telegram-connect{
+  background:rgba(56,217,189,.09)!important;border:1px solid rgba(56,217,189,.2)!important;
+  color:#8ce8d8!important;
+}
+.premium-channel-box b,.member-pill b{color:#8ce8d8!important}
+.footer{border-top:1px solid rgba(142,177,169,.13)!important;color:#829490!important}
+.footer strong{color:#8ce8d8!important;letter-spacing:.08em}
+.profile-pop{background:#111a1d!important;border-color:rgba(56,217,189,.2)!important}
+:focus-visible{outline:2px solid #56d9c0!important;outline-offset:3px}
+@media(max-width:700px){
+  .shell{width:calc(100% - 20px)!important}
+  .top{margin-top:9px!important;padding:16px!important;border-radius:16px!important;gap:12px!important}
+  .brand{font-size:clamp(18px,5vw,23px)!important}
+  .brand-sub{font-size:11px!important}
+  .brand-note{font-size:10px!important}
+  .dashboard{padding-top:12px!important;gap:13px!important}
+  .left-column,.right-column{gap:13px!important}
+  .card{padding:15px!important;border-radius:15px!important}
+  .signal h1{font-size:44px!important}
+  #chart{min-height:300px!important}
+  .pay-plans{gap:8px!important}
+  .pay-plan{min-height:118px!important;padding:13px 8px!important}
+}
+@media(max-width:390px){
+  .shell{width:calc(100% - 14px)!important}
+  .top{padding:13px!important}
+  .brand{font-size:18px!important}
+  .card{padding:12px!important}
+  .metrics strong,.levels strong{font-size:14px!important}
+}
