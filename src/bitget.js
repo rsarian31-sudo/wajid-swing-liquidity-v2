@@ -53,12 +53,13 @@ function parseRows(rows) {
 
 // Fetch closed BTC candles for one interval. Returns { closed, current, provider, fetchedAt }.
 // The forming candle is NEVER included in `closed`.
-export async function fetchBitgetCandles(interval, limit = 300) {
+export async function fetchBitgetCandles(interval, limit = 300, opts = {}) {
   const bitgetInterval = BITGET_INTERVAL[interval];
   if (!bitgetInterval) throw new Error('Bitget: unsupported interval ' + String(interval));
   const seconds = { '15min': 900, '30min': 1800, '1H': 3600 }[interval];
-  const cacheKey = interval + ':' + limit;
-  const cached = candlesCache.get(cacheKey);
+  const endTimeMs = Number(opts.endTimeMs) || null;
+  const cacheKey = interval + ':' + limit + (endTimeMs ? ':' + endTimeMs : '');
+  const cached = endTimeMs ? null : candlesCache.get(cacheKey);
   if (cached && Date.now() - cached.at < CANDLES_TTL_MS) return cached.value;
 
   const rows = await bitgetGet('/api/v3/market/candles', {
@@ -67,6 +68,7 @@ export async function fetchBitgetCandles(interval, limit = 300) {
     interval: bitgetInterval,
     type: 'market',
     limit: Math.min(1000, Math.max(1, limit)),
+    ...(endTimeMs ? { endTime: endTimeMs } : {}),
   });
   const all = parseRows(rows);
   const { closed, current } = splitClosed(all, seconds);
