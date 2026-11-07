@@ -4,8 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#050b14">
-  <meta name="description" content="Wajid Swing Liquidity — XAU/USD canonical server strategy">
-  <title>Wajid Swing Liquidity</title>
+  <meta name="description" content="Wajid Swing Liquidity — GOLD XAU/USD SMC signals">
+  <title>Wajid Swing Liquidity — GOLD</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -64,7 +64,7 @@ body:before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opac
  .signal h1{font-size:46px}
  .brand{font-size:21px}
 }</style></head>
-<body style="visibility:hidden"><script>
+<body data-market="xau" style="visibility:hidden"><script>
 (async()=>{
   try{
     const r=await fetch('/api/auth/me',{cache:'no-store'});
@@ -121,7 +121,7 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
   <header class="top shell">
     <div class="brand-block">
       <div class="brand">WAJID <span>SWING LIQUIDITY</span></div>
-      <div class="brand-sub">XAU/USD · Precision Signals · Smart Entries</div>
+      <div class="brand-sub">GOLD · XAU/USD · Precision Signals · Smart Entries</div>
       <div class="brand-note">Wait for the setup. Get the entry, SL & TP when the market aligns.</div>
     </div>
     <div class="top-right">
@@ -133,17 +133,23 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
     </div>
   </header>
 
+  <nav class="market-nav shell" aria-label="Markets">
+    <a class="market-nav-tab active" href="/" aria-current="page">GOLD</a>
+    <a class="market-nav-tab" href="/btc.html">BTC</a>
+  </nav>
+
   <main class="shell dashboard">
     <section class="left-column">
       <article class="card signal-card">
-        <div class="eyebrow" id="signalLabel">1M CURRENT SIGNAL</div>
+        <div class="eyebrow" id="signalLabel">5M CURRENT SIGNAL</div>
         <div class="signal-line">
           <div>
             <h1 id="signal">WAIT</h1>
             <p id="signalMeta">Waiting for server data</p>
           </div>
           <div class="tf-mini">
-            <button data-tf="1min" class="active">1M</button>
+            <button data-tf="5min" class="active">5M</button>
+            <button data-tf="15min">15M</button>
           </div>
         </div>
         <div class="metrics">
@@ -160,7 +166,7 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
           <div><span>Entry</span><strong id="entry">—</strong></div>
           <div><span>Stop Loss</span><strong id="sl">—</strong></div>
           <div><span>TP1 · 1R</span><strong id="tp1">—</strong></div>
-          <div><span>TP2 · 2R WIN</span><strong id="tp2">—</strong></div>
+          <div><span>TP2 · 2R milestone</span><strong id="tp2">—</strong></div>
           <div><span>TP3 · 3R</span><strong id="tp3">—</strong></div>
           <div><span>TP4 · 4R</span><strong id="tp4">—</strong></div>
           <div><span>Risk</span><strong id="risk">—</strong></div>
@@ -169,8 +175,8 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
 
       <div class="toolbar">
         <div class="timeframe-buttons">
-
-          <button data-tf="1min" class="active">1M</button>
+          <button data-tf="5min" class="active">5M</button>
+          <button data-tf="15min">15M</button>
         </div>
         <button id="refresh" class="refresh-btn">↻ <span>Refresh</span></button>
       </div>
@@ -208,7 +214,7 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
         <div class="account-title-row">
           <div>
             <h2>Daily Account Report</h2>
-            <p>1 minute account calculation · Starting balance $100 · Risk per trade 2%</p>
+            <p>Gold account calculation · Starting balance $100 · Risk per trade 2%</p>
           </div>
           <label class="account-date">
             <span>Date</span>
@@ -233,6 +239,8 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
           <div><span>Latest Price</span><b id="marketPrice">—</b></div>
           <div><span>ATR</span><b id="marketAtr">—</b></div>
           <div><span>Candles</span><b id="marketCandles">—</b></div>
+          <div><span>Provider</span><b id="marketProvider">—</b></div>
+          <div><span>Feed Health</span><b><span id="marketFeedHealth" class="feed-health">—</span></b></div>
         </div>
       </article>
 
@@ -278,7 +286,7 @@ if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');i
   </main>
 
   <footer class="footer shell">
-    <div><b>WAJID <span>SWING LIQUIDITY</span></b><small>XAU/USD · Canonical Server Strategy</small></div>
+    <div><b>WAJID <span>SWING LIQUIDITY</span></b><small>GOLD · XAU/USD · Canonical Server Strategy</small></div>
     <strong>TRADE SMART. STAY DISCIPLINED.</strong>
     <small>Built for disciplined traders.</small>
   </footer>

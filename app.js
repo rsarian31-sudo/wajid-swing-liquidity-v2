@@ -1,5 +1,5 @@
 const $ = (id) => document.getElementById(id);
-let interval = '1min';
+let interval = '5min';
 let loading = false;
 let historyView = 'daily';
 let historyData = null;
@@ -107,8 +107,26 @@ function mytParts(ts) {
   };
 }
 const esc = (x) => String(x ?? '').replace(/[&<>"']/g, (m) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[m]));
-const tfLabel = () => interval === '1min' ? '1M' : '5M';
-const tfLong = () => interval === '1min' ? '1 Minute' : '5 Minutes';
+const tfLabel = () => interval === '15min' ? '15M' : '5M';
+const tfLong = () => interval === '15min' ? '15 Minutes' : '5 Minutes';
+
+// Feed health comes only from the backend (dataProvider.health). Never inferred
+// from a price here: unknown health is shown as '—', never invented as HEALTHY.
+function setFeedHealth(data) {
+  const el = $('marketFeedHealth');
+  const providerEl = $('marketProvider');
+  if (providerEl) providerEl.textContent = data?.dataProvider?.name || '—';
+  if (!el) return;
+  const health = String(data?.dataProvider?.health || data?.diagnostics?.feed?.status || '').toUpperCase();
+  const known = { HEALTHY: 'healthy', DEGRADED: 'degraded', HALTED: 'halted' };
+  if (known[health]) {
+    el.textContent = health;
+    el.className = `feed-health ${known[health]}`;
+  } else {
+    el.textContent = '—';
+    el.className = 'feed-health';
+  }
+}
 
 function setFlat(series, data, value) {
   const numericValue = Number(value);
@@ -134,14 +152,18 @@ function resultClass(trade) {
   const status = String(trade?.status || '').toUpperCase();
   const result = String(trade?.result || '').toUpperCase();
   if (status !== 'CLOSED') return 'open';
+  // SMC trades: win/loss comes from actual realised R (TP4 HIT > 0,
+  // SL HIT < 0, BREAK EVEN = 0). Legacy v4 result strings are kept only
+  // so old history still classifies correctly.
+  if (Number.isFinite(Number(trade?.realizedR))) return Number(trade.realizedR) > 0 ? 'win' : Number(trade.realizedR) < 0 ? 'loss' : 'open';
   if (result === 'WIN' || result === 'FULL TP HIT' || result === 'FINAL TP4 HIT' || result === 'TP2 HIT CLOSE' || result === 'TP3 HIT CLOSE') return 'win';
   return 'loss';
 }
 function calcStats(trades) {
   const list = trades || [];
   const closed = list.filter(t => String(t?.status || '').toUpperCase() === 'CLOSED');
-  const wins = closed.filter(t => ['WIN','FULL TP HIT','FINAL TP4 HIT','TP2 HIT CLOSE','TP3 HIT CLOSE'].includes(String(t.result || '').toUpperCase())).length;
-  const losses = closed.filter(t => String(t.result || '').toUpperCase() === 'LOSS').length;
+  const wins = closed.filter(t => Number.isFinite(Number(t?.realizedR)) ? Number(t.realizedR) > 0 : ['WIN','FULL TP HIT','FINAL TP4 HIT','TP2 HIT CLOSE','TP3 HIT CLOSE'].includes(String(t.result || '').toUpperCase())).length;
+  const losses = closed.filter(t => Number.isFinite(Number(t?.realizedR)) ? Number(t.realizedR) < 0 : String(t.result || '').toUpperCase() === 'LOSS').length;
   const open = list.filter(t => String(t?.status || '').toUpperCase() !== 'CLOSED').length;
   const totalR = closed.reduce((sum, t) => sum + Number(t.realizedR || 0), 0);
   return { signals: list.length, wins, losses, open, winRate: wins + losses ? Number((wins / (wins + losses) * 100).toFixed(2)) : 0, totalR: Number(totalR.toFixed(2)) };
@@ -343,8 +365,9 @@ async function load() {
     setZoneLine(obSplitSeries,candles,obZone,'split');
 
     $('signal').textContent=signal.direction||'WAIT'; $('signal').className=signal.direction==='BUY'?'buy':signal.direction==='SELL'?'sell':'wait';
-    $('signalMeta').textContent=signal.confirmationTime?`Confirmed ${time(signal.confirmationTime)} · Entry ${time(signal.entryTime||signal.time)}`:signal.time?`Entry ${time(signal.entryTime||signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
+    $('signalMeta').textContent=signal.direction==='WAIT'?'WAIT — No valid setup':signal.confirmationTime?`Confirmed ${time(signal.confirmationTime)} · Entry ${time(signal.entryTime||signal.time)}`:signal.time?`Entry ${time(signal.entryTime||signal.time)}`:signal.rejection||'No active confirmed signal'; $('prob').textContent=`${signal.probability||0}%`; $('score').textContent=signal.score??0;
     $('price').textContent=fmt(data.market?.price); $('atr').textContent=fmt(data.diagnostics?.atr); $('marketPrice').textContent=fmt(data.market?.price); $('marketAtr').textContent=fmt(data.diagnostics?.atr); $('marketCandles').textContent=data.market?.candleCount??candles.length;
+    setFeedHealth(data);
 
     const plan=data.tradePlan;
     const activeDirection=active?.direction||null;
@@ -363,7 +386,7 @@ async function load() {
     setFlat(tp2Series,candles,validPlan?plan.tp2:null);
 
     renderHistory({...data.history, activeTrades:data.activeTrades||[]}); syncTimeframeUI(); setStatus(`LIVE · ${time(data.market?.lastCandleTime)}`,true); chart.timeScale().fitContent();
-  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; }
+  } catch(error) { setStatus('ERROR'); $('signalMeta').textContent=error?.message||'Unable to load server data'; setFeedHealth(null); }
   finally { loading=false; }
 }
 document.querySelectorAll('[data-tf]').forEach(button=>button.addEventListener('click',()=>{if(button.dataset.tf===interval)return;interval=button.dataset.tf;syncTimeframeUI();load();}));

@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#050b14">
+  <meta name="description" content="Wajid Swing Liquidity — BTC BTCUSDT SMC signals via Bitget">
+  <title>Wajid Swing Liquidity — BTC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/styles.css">
+<style>
+.subscription-lock p{color:#a9bfd4;line-height:1.6}.subscription-lock button{margin-top:12px}
+.member-pill{display:flex;align-items:center;gap:7px;padding:7px 10px;border:1px solid #24405a;background:#08131f;border-radius:999px;color:#9fb2c3;font-size:10px}.member-pill b{color:#39dfa0}.member-pill button{border:0;background:transparent;color:#ff7d8d;font-size:10px;font-weight:700;cursor:pointer}.pay-box{margin-top:14px;padding:14px;border:1px solid #1b3a54;border-radius:12px;background:#071521}
+.pay-box{margin-top:14px;padding:16px;border:1px solid #294c68;border-radius:14px;background:#071521;box-shadow:0 0 0 1px rgba(255,196,45,.08),0 12px 35px rgba(0,0,0,.22)}
+.pay-plans{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px}
+.pay-plan{position:relative;min-height:142px;border:1px solid #2b7fff;background:linear-gradient(145deg,#0788ff,#1555d8);color:#fff;border-radius:16px;padding:18px 14px;cursor:pointer;text-align:center;box-shadow:0 0 20px rgba(0,136,255,.22);transition:.2s}
+.pay-plan.month{background:linear-gradient(145deg,#ff21c8,#7d1cff);border-color:#ff45da;box-shadow:0 0 20px rgba(255,33,200,.22)}
+.pay-plan:hover{transform:translateY(-2px);filter:brightness(1.08)}
+.pay-plan .crown{display:block;font-size:25px;line-height:1;margin-bottom:8px}
+.pay-plan .premium-text{display:block;font-size:20px;font-weight:900;letter-spacing:.2px;line-height:1.05;color:#fff!important;opacity:1!important;text-shadow:0 1px 2px rgba(0,0,0,.25)}
+.pay-plan .plan-days{display:inline-block;margin-top:14px;padding:8px 14px;border-radius:999px;background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.5);font-size:13px;font-weight:900;color:#fff}
+.pay-details{margin-top:14px}.pay-plans{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px}.pay-plan{border:1px solid #2b7fff;background:linear-gradient(145deg,#0788ff,#1555d8);color:#fff;border-radius:16px;padding:18px 14px;cursor:pointer;text-align:center}.pay-plan b{display:block;font-size:15px}.pay-plan span{display:block;color:#8fa6b8;font-size:11px;margin-top:3px}.pay-details{margin-top:12px}.pay-address{word-break:break-all;font:600 11px ui-monospace,monospace;color:#b9d6e8;background:#06101a;padding:10px;border-radius:8px}.pay-input{width:100%;box-sizing:border-box;margin-top:10px;padding:11px;border:1px solid #28485f;background:#06101a;color:#fff;border-radius:8px}.pay-action{margin-top:10px;border:1px solid #1d4b6a;background:#128df2;color:#fff;border-radius:9px;padding:10px 14px;font-weight:800;cursor:pointer}.pay-msg{margin-top:10px;color:#9fb2c3;font-size:11px}.telegram-connect{display:inline-block;margin-top:8px;padding:7px 10px;border-radius:8px;background:#0d2238;border:1px solid #2b7fff;color:#fff;text-decoration:none;font-size:10px;font-weight:800}.premium-channel-box{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid #284b68;border-radius:12px;background:#06111c}.premium-channel-box .premium-channel-icon{font-size:22px}.premium-channel-box b{display:block;color:#fff;font-size:12px}.premium-channel-box p{margin:3px 0 0;color:#8fa6b8;font-size:10px;line-height:1.45}.channel-lock{margin-left:auto;white-space:nowrap;padding:5px 7px;border-radius:999px;background:#211a08;border:1px solid #66511d;color:#ffd36a;font-size:8px;font-weight:900}.premium-channel-card{display:flex;align-items:center;gap:12px;padding:16px}.premium-channel-card .premium-channel-icon{font-size:26px}.premium-channel-card h2{margin:3px 0 2px;font-size:16px}.premium-channel-card p{margin:0;color:#8fa6b8;font-size:10px}.channel-access-btn{margin-left:auto;white-space:nowrap}@media(max-width:700px){.premium-channel-box{align-items:flex-start;flex-wrap:wrap}.channel-lock{margin-left:0}.premium-channel-card{align-items:flex-start;flex-wrap:wrap}.channel-access-btn{margin-left:0}}
+.profile-pop{position:fixed;top:70px;right:16px;width:min(290px,calc(100vw - 32px));z-index:9999;padding:15px;border:1px solid #2b7fff;border-radius:14px;background:#071521;box-shadow:0 18px 50px rgba(0,0,0,.5);display:none}.profile-pop.open{display:block}.profile-pop-head{display:flex;align-items:center;gap:10px;padding-bottom:12px;border-bottom:1px solid #1b3a54}.profile-avatar{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(145deg,#0788ff,#7d1cff);color:#fff;font-weight:900}.profile-pop h3{margin:0;color:#fff;font-size:14px}.profile-pop .email{margin-top:3px;color:#8fa6b8;font-size:10px;word-break:break-all}.profile-pop-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}.profile-pop-item{padding:9px;border:1px solid #1b3a54;border-radius:9px;background:#06111c}.profile-pop-item span{display:block;color:#718ba0;font-size:8px;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}.profile-pop-item b{display:block;color:#eaf6ff;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-pop .free{color:#ffd36a}.profile-pop .premium{color:#39dfa0}.profile-logout{width:100%;margin-top:12px;border:1px solid #8b3344;background:#24101a;color:#ff9aaa;border-radius:9px;padding:9px;font-size:11px;font-weight:900;cursor:pointer}.profile-btn{border:0;background:transparent;color:#fff!important;font-size:10px;font-weight:800;cursor:pointer;padding:2px 4px}.profile-close{position:absolute;top:8px;right:9px;border:0;background:transparent;color:#7891a5;font-size:18px;cursor:pointer}@media(max-width:700px){.member-pill span{display:none}.member-pill{padding:6px 8px}.pay-plan{min-height:132px;padding:16px 8px}.pay-plan .premium-text{font-size:17px}.pay-plan .plan-days{font-size:12px;padding:7px 9px}}
+
+/* Lightweight trading background — no personal image, no fixed blur/backdrop effects */
+html,body{min-height:100%;background:#020711!important}
+body{
+  background:
+    radial-gradient(circle at 82% 8%,rgba(0,145,255,.12),transparent 24%),
+    radial-gradient(circle at 15% 58%,rgba(0,220,170,.07),transparent 28%),
+    linear-gradient(180deg,#020711 0%,#03111d 48%,#020711 100%)!important;
+  background-attachment:scroll!important;
+}
+body:before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.22;
+  background:repeating-linear-gradient(90deg,transparent 0 74px,rgba(24,151,232,.10) 75px,transparent 76px),
+             linear-gradient(180deg,transparent 0 78%,rgba(0,222,171,.05) 100%);
+}
+.top,.dashboard,.footer{position:relative;z-index:2}
+.page-glow{opacity:.28!important;filter:none!important}
+.shell{width:min(1440px,calc(100% - 24px))}
+.top{margin-top:10px;padding:20px 12px 18px;border:1px solid rgba(40,150,255,.24);border-radius:20px;background:rgba(3,10,19,.92);box-shadow:0 18px 45px rgba(0,0,0,.24)}
+.brand{font-size:28px;text-shadow:0 0 18px rgba(20,145,255,.14)}
+.brand span{color:#159cff}
+.brand-sub{color:#b0c0cf}.brand-note{color:#8a9caf}
+.status,.server-pill{background:#061522;border-color:rgba(55,145,210,.45)}
+.dashboard{gap:18px;padding-top:18px}
+.card{background:linear-gradient(145deg,#061a2b,#04111e);border-color:rgba(22,145,230,.52);border-radius:18px;box-shadow:0 14px 38px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.04)}
+.card:before{background:linear-gradient(120deg,rgba(20,155,255,.08),transparent 42%,rgba(0,255,190,.02))}
+.metrics div,.levels div{background:#071d30;border-color:rgba(24,104,160,.45);box-shadow:inset 0 1px 0 rgba(255,255,255,.025)}
+.tf-mini{background:#03101d;border-color:#168fff;box-shadow:0 0 14px rgba(0,143,255,.16)}
+.tf-mini button.active{box-shadow:0 0 18px rgba(0,143,255,.25)}
+.lock-badge,.chart-live{background:#06231d;box-shadow:0 0 12px rgba(50,220,155,.10)}
+.history-section,.week-card,.history-card,.calculator-card{background:#061625}
+.quote-card{box-shadow:0 0 24px rgba(240,189,53,.06)}
+.footer{background:#030c15;border-color:rgba(50,120,170,.28)}
+@media(max-width:700px){
+ .shell{width:calc(100% - 12px)}
+ .top{margin-top:6px;padding:16px 10px 14px;border-radius:16px}
+ .top-right{align-items:center}
+ .dashboard{gap:12px;padding-top:10px}
+ .card{border-radius:16px}
+ .signal h1{font-size:46px}
+ .brand{font-size:21px}
+}</style></head>
+<body data-market="btc" style="visibility:hidden"><script>
+(async()=>{
+  try{
+    const r=await fetch('/api/auth/me',{cache:'no-store'});
+    if(r.status===503){document.body.style.visibility='visible';return} if(!r.ok){location.replace('/login.html');return}
+    const d=await r.json();
+    document.body.style.visibility='visible';
+    window.WAJID_USER=d.user;
+    const free=d.user.role!=='admin' && d.user.subscriptionStatus!=='active';
+    if(free){
+      document.querySelectorAll('.signal-card,.plan-card,.toolbar,.chart-card,.diagnostics-card,.market-card,.telegram-card').forEach(x=>x.style.display='none');
+      const c=document.createElement('article');
+      c.className='card subscription-lock';
+      c.innerHTML='<div class="accent-label">👑 MEMBERS AREA</div><h2>Unlock Live Signals</h2><p>Your performance history is available. Choose a subscription to unlock live Entry / SL / TP signals and Telegram access.</p><div class="pay-box"><b>USDT · BNB Smart Chain (BEP-20)</b><div class="pay-plans"><button class="pay-plan" type="button" onclick="startPayment(\'week\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Week · 7 Days</span></button><button class="pay-plan month" type="button" onclick="startPayment(\'month\')"><span class="crown">👑</span><span class="premium-text">Click For Premium</span><span class="plan-days">1 Month · 30 Days</span></button></div><div id="payDetails"></div></div>';
+      document.querySelector('.left-column').appendChild(c);
+    }
+
+    window.startPayment=async(plan)=>{const box=document.getElementById('payDetails');if(!box)return;box.innerHTML='<div class="pay-msg">Creating secure payment order…</div>';try{const r=await fetch('/api/payment/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Could not create order');window.WAJID_PAY_ORDER=d.order;const qrData='ethereum:'+encodeURIComponent('0x55d398326f99059ff775485246999027b3197955@56/transfer?address='+d.order.wallet+'&uint256='+String(Math.round(Number(d.order.amountUsdt)*1e18)));const qrUrl='https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data='+qrData;box.innerHTML='<div class="premium-choice">👑 PREMIUM SELECTED · <b>'+d.order.amountUsdt+' USDT</b></div><div class="pay-details"><div class="pay-msg">Send exactly <b>'+d.order.amountUsdt+' USDT</b> on <b>BSC / BEP-20</b> to:</div><div class="pay-qr-wrap"><img src="'+qrUrl+'" alt="BSC USDT payment QR"><div class="pay-qr-label">SCAN TO PAY · BSC USDT</div></div><div class="pay-qr-note">Scan the QR with a compatible wallet. If your wallet does not prefill the amount, enter exactly <b>'+d.order.amountUsdt+' USDT</b>.</div><div class="pay-address">'+d.order.wallet+'</div><button class="pay-action" type="button" onclick="navigator.clipboard&&navigator.clipboard.writeText(\''+d.order.wallet+'\')">📋 Copy Address</button><div class="pay-msg">After payment, paste the BSC transaction hash below.</div><input id="txHash" class="pay-input" placeholder="0x transaction hash" autocomplete="off"><button class="pay-action" type="button" onclick="verifyPayment()">✅ Verify Payment</button><div id="payMsg" class="pay-msg"></div></div>'}catch(e){box.innerHTML='<div class="pay-msg">⚠️ '+String(e.message||e).replace(/[<>&"]/g,'')+'</div>'}};
+    window.verifyPayment=async()=>{const o=window.WAJID_PAY_ORDER,tx=document.getElementById('txHash')?.value.trim(),msg=document.getElementById('payMsg');if(!o||!tx){if(msg)msg.textContent='Enter the transaction hash.';return}if(msg)msg.textContent='Verifying on BSC…';try{const r=await fetch('/api/payment/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({orderId:o.id,txHash:tx})});const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||'Payment verification failed');if(msg)msg.innerHTML='✅ Payment verified. Subscription is active. Reloading…';setTimeout(()=>location.reload(),1200)}catch(e){if(msg)msg.textContent='⚠️ '+String(e.message||e).replace(/[<>&"]/g,'')}};
+    const c=document.createElement('div');
+    c.className='member-pill';
+    const badge=free?'FREE':'PREMIUM';
+    const badgeClass=free?'':' style="color:#39dfa0"';
+    c.innerHTML='<span>'+String(d.user.name||d.user.email).replace(/[<>&"]/g,'')+'</span><b'+badgeClass+'>'+badge+'</b><button class="profile-btn" id="profileBtn" type="button">Profile</button>';
+    document.querySelector('.top-right').appendChild(c);
+    document.getElementById('profileBtn').onclick=()=>{
+      let pop=document.getElementById('profilePop');
+      if(!pop){
+        pop=document.createElement('div');
+        pop.id='profilePop';
+        pop.className='profile-pop';
+        pop.innerHTML='<button class="profile-close" id="profileClose" type="button">×</button><div class="profile-pop-head"><div class="profile-avatar" id="popAvatar">U</div><div><h3 id="popName">—</h3><div class="email" id="popEmail">—</div></div></div><div class="profile-pop-grid"><div class="profile-pop-item"><span>Plan</span><b id="popPlan">—</b></div><div class="profile-pop-item"><span>Status</span><b id="popStatus">—</b></div><div class="profile-pop-item" style="grid-column:1/-1"><span>Premium Until</span><b id="popExpiry">—</b></div></div><button id="adminBroadcastBtn" type="button" style="display:none;width:100%;margin-top:10px;border:1px solid #2b7fff;background:#0d2238;color:#fff;border-radius:9px;padding:9px;font-size:11px;font-weight:900;cursor:pointer;">📢 Send Channel Message</button><button class="profile-logout" id="popLogout" type="button">Log out</button>';
+        document.body.appendChild(pop);
+        pop.querySelector('#adminBroadcastBtn').style.display=d.user.role==='admin'?'block':'none';
+        pop.querySelector('#profileClose').onclick=()=>pop.classList.remove('open');
+        pop.querySelector('#adminBroadcastBtn').onclick=()=>openAdminBroadcast();pop.querySelector('#popLogout').onclick=async()=>{const b=pop.querySelector('#popLogout');b.disabled=true;b.textContent='Logging out…';try{await fetch('/api/auth/logout',{method:'POST'});}finally{location.replace('/login.html');}};
+      }
+      pop.querySelector('#popAvatar').textContent=String(d.user.name||d.user.email||'U').trim().charAt(0).toUpperCase();
+      pop.querySelector('#popName').textContent=d.user.name||'—';
+      pop.querySelector('#popEmail').textContent=d.user.email||'—';
+      pop.querySelector('#popPlan').textContent=free?'FREE':'PREMIUM';
+      pop.querySelector('#popPlan').className=free?'free':'premium';
+      pop.querySelector('#popStatus').textContent=free?'Not subscribed':'Active';
+      pop.querySelector('#popStatus').className=free?'free':'premium';
+      pop.querySelector('#popExpiry').textContent=free?'—':(d.user.subscriptionExpiresAt?new Date(d.user.subscriptionExpiresAt).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'}):'Active');
+      pop.classList.toggle('open');
+    };
+    const openAdminBroadcast=()=>{let box=document.getElementById('adminBroadcastBox');if(box){box.remove();return}box=document.createElement('div');box.id='adminBroadcastBox';box.style.cssText='position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.72);display:grid;place-items:center;padding:16px';box.innerHTML='<div style="width:min(460px,100%);padding:18px;border:1px solid #2b7fff;border-radius:16px;background:#071521;box-shadow:0 20px 60px rgba(0,0,0,.55)"><div style="display:flex;justify-content:space-between;align-items:center"><b style="color:#fff;font-size:15px">📢 Telegram Channel Message</b><button id="broadcastClose" type="button" style="border:0;background:transparent;color:#7891a5;font-size:20px">×</button></div><p style="color:#8fa6b8;font-size:10px;line-height:1.5">Send directly to WAJID SWING LIQUIDITY.</p><textarea id="broadcastText" maxlength="4000" rows="7" placeholder="Write your message..." style="width:100%;box-sizing:border-box;padding:11px;border:1px solid #28485f;background:#06101a;color:#fff;border-radius:9px;resize:vertical"></textarea><div id="broadcastMsg" style="margin-top:9px;color:#8fa6b8;font-size:11px"></div><button id="broadcastSend" type="button" style="width:100%;margin-top:10px;border:1px solid #2b7fff;background:#128df2;color:#fff;border-radius:9px;padding:11px;font-weight:900">📢 Send to Channel</button></div>';document.body.appendChild(box);box.querySelector('#broadcastClose').onclick=()=>box.remove();box.addEventListener('click',e=>{if(e.target===box)box.remove()});box.querySelector('#broadcastSend').onclick=async()=>{const b=box.querySelector('#broadcastSend'),msg=box.querySelector('#broadcastMsg'),text=box.querySelector('#broadcastText').value.trim();if(!text){msg.textContent='Write a message first.';return}b.disabled=true;b.textContent='Sending…';msg.textContent='';try{const r=await fetch('/api/telegram/broadcast',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text})});const x=await r.json().catch(()=>({}));if(!r.ok||!x.ok)throw new Error(x.detail||x.error||'Send failed');msg.style.color='#39dfa0';msg.textContent='✅ Message sent to Telegram channel.';box.querySelector('#broadcastText').value='';}catch(e){msg.style.color='#ff9aaa';msg.textContent='⚠️ '+String(e.message||e).replace(/[<>&"]/g,'')}finally{b.disabled=false;b.textContent='📢 Send to Channel'}};setTimeout(()=>box.querySelector('#broadcastText')?.focus(),50)};
+if(d.user.role==='admin'){const a=document.getElementById('telegramAdminLink');if(a)a.style.display='inline-block';}
+    if(!free){try{const tr=await fetch('/api/payment/telegram',{cache:'no-store'});const td=await tr.json();if(td.ok&&td.telegramConnect){const channel=document.createElement('article');channel.className='card premium-channel-card';channel.innerHTML='<div class="premium-channel-icon">🔐</div><div><div class="accent-label">PREMIUM TELEGRAM CHANNEL</div><h2>WAJID SWING LIQUIDITY</h2><p>Private BTC signals · Entry · SL · TP1–TP4</p></div><a class="telegram-connect channel-access-btn" href="'+td.telegramConnect+'" target="_blank" rel="noopener">🔐 Get Premium Channel Access</a>';document.querySelector('.left-column').appendChild(channel);const a=document.createElement('a');a.className='telegram-connect';a.href=td.telegramConnect;a.target='_blank';a.rel='noopener';a.textContent='🔐 Get Premium Channel Access';c.appendChild(a)}}catch(_){}} 
+  }catch(_){location.replace('/login.html')}
+})();
+</script>
+  <div class="page-glow"></div>
+  <header class="top shell">
+    <div class="brand-block">
+      <div class="brand">WAJID <span>SWING LIQUIDITY</span></div>
+      <div class="brand-sub">BTC · BTCUSDT Spot via Bitget · Precision Signals · Smart Entries</div>
+      <div class="brand-note">Wait for the setup. Get the entry, SL & TP when the market aligns.</div>
+    </div>
+    <div class="top-right">
+      <div class="quote">“Discipline Today<br><span>Better Trades Tomorrow”</span></div>
+      <div class="status-row">
+        <div id="status" class="status">CONNECTING</div>
+        <div class="server-pill"><i></i> Server Online</div>
+      </div>
+    </div>
+  </header>
+
+  <nav class="market-nav shell" aria-label="Markets">
+    <a class="market-nav-tab" href="/">GOLD</a>
+    <a class="market-nav-tab active" href="/btc.html" aria-current="page">BTC</a>
+  </nav>
+
+  <main class="shell dashboard">
+    <section class="left-column">
+      <article class="card signal-card">
+        <div class="eyebrow" id="signalLabel">15M CURRENT SIGNAL</div>
+        <div class="signal-line">
+          <div>
+            <h1 id="signal">WAIT</h1>
+            <p id="signalMeta">Waiting for server data</p>
+          </div>
+          <div class="tf-mini">
+            <button data-tf="15min" class="active">15M</button>
+            <button data-tf="30min">30M</button>
+            <button data-tf="1H">1H</button>
+          </div>
+        </div>
+        <div class="metrics">
+          <div><label>Probability</label><strong id="prob">—</strong></div>
+          <div><label>Score</label><strong id="score">—</strong></div>
+          <div><label>Price</label><strong id="price">—</strong></div>
+          <div><label>ATR</label><strong id="atr">—</strong></div>
+        </div>
+      </article>
+
+      <article class="card plan-card">
+        <div class="section-heading"><div><span class="accent-label">TRADE PLAN</span><h2 id="planState">No active trade</h2></div><span class="lock-badge">SERVER CONTROLLED</span></div>
+        <div class="levels">
+          <div><span>Entry</span><strong id="entry">—</strong></div>
+          <div><span>Stop Loss</span><strong id="sl">—</strong></div>
+          <div><span>TP1 · 1R</span><strong id="tp1">—</strong></div>
+          <div><span>TP2 · 2R milestone</span><strong id="tp2">—</strong></div>
+          <div><span>TP3 · 3R</span><strong id="tp3">—</strong></div>
+          <div><span>TP4 · 4R</span><strong id="tp4">—</strong></div>
+          <div><span>Risk</span><strong id="risk">—</strong></div>
+        </div>
+      </article>
+
+      <div class="toolbar">
+        <div class="timeframe-buttons">
+          <button data-tf="15min" class="active">15M</button>
+          <button data-tf="30min">30M</button>
+          <button data-tf="1H">1H</button>
+        </div>
+        <button id="refresh" class="refresh-btn">↻ <span>Refresh</span></button>
+      </div>
+
+      <article class="card chart-card">
+        <div class="panel-title">
+          <div><b>Market Structure</b><small>Liquidity · sweeps · confirmed trade context · Volume OB history</small></div>
+          <span class="chart-live">LIVE</span>
+        </div>
+        <div id="chart"></div>
+      </article>
+
+
+      <article class="card history-card">
+        <div class="panel-title"><div><b>Trade History</b><small>TP1–TP4 milestones · trade stays open until TP4 or SL</small></div></div>
+        <div class="history-tabs" role="tablist" aria-label="History views">
+          <button class="history-tab active" data-history-view="daily">Daily History</button>
+          <button class="history-tab" data-history-view="weekly">Weekly Report</button>
+        </div>
+        <div id="summary" class="summary"></div>
+        <div id="historyView" class="history-view">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>TIME</th><th>SIDE</th><th>ENTRY</th><th>SL</th><th>TP1</th><th>TP2</th><th>TP3</th><th>TP4</th><th>TP HIT</th><th>RESULT</th><th>R</th></tr></thead>
+              <tbody id="history"><tr><td colspan="11">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <aside class="right-column">
+      <article class="card info-card account-card">
+        <div class="card-icon blue">◈</div>
+        <div class="account-title-row">
+          <div>
+            <h2>Daily Account Report</h2>
+            <p>BTC account calculation · Starting balance $100 · Risk per trade 2%</p>
+          </div>
+          <label class="account-date">
+            <span>Date</span>
+            <input id="dailyDate" type="date" aria-label="Select account report date">
+          </label>
+        </div>
+        <div class="account-grid">
+          <div><span>Trades</span><b id="dailyTrades">0</b></div>
+          <div><span>Profit</span><b id="dailyProfit" class="win">$0.00</b></div>
+          <div><span>Loss</span><b id="dailyLoss" class="loss">$0.00</b></div>
+          <div><span>Net</span><b id="dailyNet">$0.00</b></div>
+          <div><span>Balance</span><b id="dailyBalance">$100.00</b></div>
+        </div>
+      </article>
+
+      <article class="card market-card">
+        <div class="card-icon gold">▥</div>
+        <h2>Market Info</h2>
+        <div class="info-rows">
+          <div><span>Symbol</span><b>BTC/USDT</b></div>
+          <div><span>Timeframe</span><b id="marketTf">15 Minutes</b></div>
+          <div><span>Latest Price</span><b id="marketPrice">—</b></div>
+          <div><span>ATR</span><b id="marketAtr">—</b></div>
+          <div><span>Candles</span><b id="marketCandles">—</b></div>
+          <div><span>Provider</span><b id="marketProvider">—</b></div>
+          <div><span>Feed Health</span><b><span id="marketFeedHealth" class="feed-health">—</span></b></div>
+        </div>
+      </article>
+
+      <article class="card performance-card">
+        <div class="card-icon blue">◉</div>
+        <h2>Total Balance</h2>
+        <div class="perf-grid">
+          <div><span>Starting Balance</span><b>$100.00</b></div>
+          <div><span>Accumulated Balance</span><b id="perfBalance">$100.00</b></div>
+        </div>
+      </article>
+
+      <article class="card quote-card">
+        <div class="quote-mark">“</div>
+        <blockquote>Get Premium for the setup,<br>then trade by the rules and with discipline.</blockquote>
+        <cite>— WAJID AI</cite>
+      </article>
+
+      <article class="card calculator-card">
+        <div class="card-icon blue">◈</div>
+        <h2>Personal RR Calculator</h2>
+        <p class="calc-subtitle">Enter your balance and risk percentage.</p>
+        <div class="calc-inputs">
+          <label><span>Amount (USDT)</span><input id="calcBalance" type="number" min="1" step="0.01" value="100" inputmode="decimal"></label>
+          <label><span>Risk (%)</span><input id="calcRisk" type="number" min="0.1" max="100" step="0.1" value="2" inputmode="decimal"></label>
+        </div>
+        <div class="calc-grid">
+          <div><span>1R</span><b id="calcRiskUsd">$2.00</b></div>
+          <div><span>Profit</span><b id="calcProfitUsd" class="win">$0.00</b></div>
+          <div><span>Loss</span><b id="calcLossUsd" class="loss">$0.00</b></div>
+          <div><span>Net</span><b id="calcNetUsd">$0.00</b></div>
+          <div><span>Balance</span><b id="calcBalanceOut">$100.00</b></div>
+        </div>
+      </article>
+
+      <article class="card telegram-card">
+        <div class="telegram-icon">➤</div>
+        <div><h2>Stay Updated</h2><p>Telegram notifications can be connected to the canonical server signal.</p></div>
+        <div class="coming-soon">TELEGRAM · ACTIVE FOR SUBSCRIBERS</div>
+        <a id="telegramAdminLink" href="/telegram/admin" style="display:none;margin-top:12px;padding:10px 14px;border:1px solid #2b7fff;border-radius:8px;color:#fff;background:#0d2238;text-decoration:none;font-weight:700;font-size:12px;">🔐 TELEGRAM ADMIN</a>
+      </article>
+    </aside>
+  </main>
+
+  <footer class="footer shell">
+    <div><b>WAJID <span>SWING LIQUIDITY</span></b><small>BTC · BTCUSDT Spot · Bitget · Canonical Server Strategy</small></div>
+    <strong>TRADE SMART. STAY DISCIPLINED.</strong>
+    <small>Built for disciplined traders.</small>
+  </footer>
+
+  <script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="/ob-history.js?v=20260922-volumeob1"></script>
+  <script src="/ui-safety.js?v=20260922-volumeob1"></script>
+  <script src="/btc.js?v=20261107-btc1"></script>
+  <script src="/account-report.js?v=20260928-balance1"></script>
+</body>
+</html>

@@ -48,7 +48,7 @@
     shell.insertBefore(tools, chart);
     const legend = document.createElement('div');
     legend.className = 'wajid-chart-legend';
-    legend.innerHTML = `<span>XAU/USD</span><span class="muted" data-wj-legend="tf">1M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
+    legend.innerHTML = `<span data-wj-legend="symbol">XAU/USD</span><span class="muted" data-wj-legend="tf">5M</span><span class="dot"></span><span class="muted" data-wj-legend="provider">LIVE</span><span class="price" data-wj-legend="price">—</span>`;
     chart.appendChild(legend);
     const showToast = (message) => {
       let toast = document.getElementById('wajid-chart-toast');
@@ -198,8 +198,14 @@
     });
   }
 
+  // Timeframe label is generic: it shows whatever interval is active on the
+  // current market page (Gold 5M/15M, BTC 15M/30M/1H). No interval is hardcoded.
+  const TF_LABELS = { '5min': '5M', '15min': '15M', '30min': '30M', '1H': '1H' };
   function updateLegend(data, interval) {
-    document.querySelector('[data-wj-legend="tf"]')?.replaceChildren(document.createTextNode(interval === '5min' ? '5M' : '1M'));
+    const market = document.body?.dataset?.market || 'xau';
+    const symbol = data?.market?.symbol || (market === 'btc' ? 'BTC/USDT' : 'XAU/USD');
+    document.querySelector('[data-wj-legend="symbol"]')?.replaceChildren(document.createTextNode(symbol));
+    document.querySelector('[data-wj-legend="tf"]')?.replaceChildren(document.createTextNode(TF_LABELS[interval] || String(interval || '').replace('min', 'M') || '—'));
     document.querySelector('[data-wj-legend="provider"]')?.replaceChildren(document.createTextNode(data?.dataProvider?.name || 'LIVE'));
     const candles = data?.candles || [];
     const last = candles.at(-1)?.close;
@@ -212,7 +218,9 @@
     setupShell();
     state.interval = interval || document.querySelector('[data-tf].active')?.dataset.tf || '5min';
     try {
-      const r = await fetch(`/api/data?interval=${encodeURIComponent(state.interval)}&outputsize=300`, {cache:'no-store'});
+      const market = document.body?.dataset?.market || 'xau';
+      const endpoint = market === 'btc' ? '/api/btc-data' : '/api/data';
+      const r = await fetch(`${endpoint}?interval=${encodeURIComponent(state.interval)}&outputsize=300`, {cache:'no-store'});
       const data = await r.json(); if (!r.ok || !data.success) return;
       clear();
       const candles = data.candles || [];
@@ -227,7 +235,7 @@
   async function boot() {
     for (let i=0;i<40 && !window.__wajidChart;i++) await wait(150);
     setupShell();
-    const initial = document.querySelector('[data-tf].active')?.dataset.tf || '1min';
+    const initial = document.querySelector('[data-tf].active')?.dataset.tf || '5min';
     await loadHistory(initial);
     document.querySelectorAll('[data-tf]').forEach(b => {
       if (b.__wajidOBBound) return;

@@ -1,5 +1,12 @@
 (() => {
   const $ = (id) => document.getElementById(id);
+  // Market scope comes from <body data-market="xau|btc">. Gold reports only its
+  // own signal intervals (5min/15min); the BTC page reports only BTC intervals
+  // (15min/30min/1H). Calculation logic below is unchanged.
+  const MARKET = document.body?.dataset?.market || 'xau';
+  const SCOPE_INTERVALS = MARKET === 'btc' ? ['15min', '30min', '1H'] : ['5min', '15min'];
+  const DATA_ENDPOINT = MARKET === 'btc' ? '/api/btc-data' : '/api/data';
+  const inScope = (t) => SCOPE_INTERVALS.includes(t?.interval) && t?.status === 'CLOSED';
   const money = (v) => {
     const n = Number(v || 0);
     return (n < 0 ? '-$' : '$') + Math.abs(n).toFixed(2);
@@ -17,6 +24,9 @@
   const todayMalaysia = () => malaysiaDayKey(Date.now());
 
   const accountR = (t) => {
+    // SMC trades carry realised R from the actual exit price — use it.
+    // Legacy v4 result strings below are only for old history.
+    if (Number.isFinite(Number(t?.realizedR))) return Number(t.realizedR);
     const result = String(t?.result || '').toUpperCase();
     const hits = Array.isArray(t?.hitTPs) ? t.hitTPs : [];
     if (result === 'LOSS') return -1;
@@ -29,7 +39,7 @@
 
   const closedDaily = (trades, dayKey) =>
     (Array.isArray(trades) ? trades : [])
-      .filter(t => t?.interval === '1min' && t?.status === 'CLOSED')
+      .filter(inScope)
       .filter(t => malaysiaDayKey(t.exitTime || t.signalTime || t.createdAt) === dayKey);
 
   function renderCalculator(rows) {
@@ -87,7 +97,7 @@
 
   async function updateAccountReport() {
     try {
-      const r = await fetch('/api/data?interval=1min&outputsize=100', { cache: 'no-store' });
+      const r = await fetch(`${DATA_ENDPOINT}?interval=${encodeURIComponent(SCOPE_INTERVALS[0])}&outputsize=100`, { cache: 'no-store' });
       const data = await r.json();
       if (!r.ok || !data?.success) return;
       allTrades = Array.isArray(data?.history?.trades) ? data.history.trades : [];
@@ -95,7 +105,7 @@
       if (!dateInput.value) dateInput.value = todayMalaysia();
       const rows = closedDaily(allTrades, dateInput.value);
       const allClosed = (Array.isArray(allTrades) ? allTrades : [])
-        .filter(t => t?.interval === '1min' && t?.status === 'CLOSED');
+        .filter(inScope);
       const target = rows.length ? Math.max(...rows.map(t => Number(t.exitTime || t.signalTime || t.createdAt || 0))) : Date.parse(dateInput.value + 'T23:59:59Z');
       const cumulativeRows = allClosed.filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= target);
       render(rows, cumulativeRows);
@@ -108,7 +118,7 @@
     dateInput.addEventListener('change', () => {
       const rows = closedDaily(allTrades, dateInput.value);
       const allClosed = (Array.isArray(allTrades) ? allTrades : [])
-        .filter(t => t?.interval === '1min' && t?.status === 'CLOSED');
+        .filter(inScope);
       const target = rows.length ? Math.max(...rows.map(t => Number(t.exitTime || t.signalTime || t.createdAt || 0))) : Date.parse(dateInput.value + 'T23:59:59Z');
       const cumulativeRows = allClosed.filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= target);
       render(rows, cumulativeRows);
