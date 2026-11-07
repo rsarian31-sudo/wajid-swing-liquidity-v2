@@ -1,7 +1,7 @@
 import { onRequest as dataRequest } from './functions/api/data.js';
 import { onRequest as healthRequest } from './functions/api/health.js';
 import { analyzeSmc } from './src/smc-core.js';
-import { marketConfig, INTERVAL_SECONDS, SMC_RULE_VERSION } from './src/smc-config.js';
+import { marketConfig, htfInterval, INTERVAL_SECONDS, SMC_RULE_VERSION } from './src/smc-config.js';
 import { makeSmcTrade, advanceSmcTrade, dedupeSmcTrades } from './src/trade-manager.js';
 import { validateCandles, splitClosed } from './src/feed-health.js';
 import { fetchBitgetCandles, fetchBitgetTicker } from './src/bitget.js';
@@ -195,12 +195,27 @@ async function runSmcPipeline(market, interval, env) {
 
     // 1. Fetch closed candles. Gold reuses the existing Twelve Data source;
     // BTC uses the Bitget V3 public API. No silent provider fallbacks.
+    // A fetch failure HALTs the market in state (so the UI shows HALTED,
+    // not UNKNOWN) instead of leaving stale state behind.
     let feed;
-    if (market === 'btc') {
-      const r = await fetchBitgetCandles(interval, 300);
-      feed = { closed: r.closed, current: r.current, provider: 'Bitget', fetchedAt: r.fetchedAt };
-    } else {
-      feed = await fetchGoldCandles(interval, env);
+    try {
+      if (market === 'btc') {
+        const r = await fetchBitgetCandles(interval, 300);
+        feed = { closed: r.closed, current: r.current, provider: 'Bitget', fetchedAt: r.fetchedAt };
+      } else {
+        feed = await fetchGoldCandles(interval, env);
+      }
+    } catch (error) {
+      const state = await getState(stub);
+      const smc = ensureSmcState(state);
+      const bucket = smcBucket(smc, market, interval);
+      bucket.feedHealth = 'HALTED';
+      bucket.lastFeedUpdate = Date.now();
+      bucket.lastFeedError = String(error?.message || error).slice(0, 180);
+      state.telegram = ensureTelegramState(state, env);
+      await putState(stub, state);
+      console.error('SMC feed fetch failed — HALTED', market, interval, bucket.lastFeedError);
+      return { ok: false, health: 'HALTED', error: bucket.lastFeedError };
     }
 
     const state = await getState(stub);
