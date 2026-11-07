@@ -364,3 +364,180 @@ td{color:#d6e2de!important}
   .card{padding:12px!important}
   .metrics strong,.levels strong{font-size:14px!important}
 }
+
+
+/* V4 — Approved visual direction: Premium Black & Gold dashboard
+   Presentation-only overrides matching the supplied design reference. */
+:root{
+  color-scheme:dark;
+  --wsl-bg:#070707;
+  --wsl-panel:#11100d;
+  --wsl-panel-2:#19160f;
+  --wsl-panel-3:#0b0a08;
+  --wsl-gold:#d6ad43;
+  --wsl-gold-bright:#f6d77e;
+  --wsl-gold-muted:#a9852e;
+  --wsl-line:rgba(214,173,67,.28);
+  --wsl-line-soft:rgba(230,213,170,.10);
+  --wsl-text:#f7f2e6;
+  --wsl-muted:#a59b84;
+  --wsl-green:#45d6a0;
+  --wsl-red:#ff6878;
+  --wsl-radius:17px;
+  --wsl-shadow:0 16px 42px rgba(0,0,0,.38);
+}
+html,body{
+  background:
+    radial-gradient(ellipse at 50% -18%,rgba(214,173,67,.16),transparent 42%),
+    radial-gradient(ellipse at 100% 42%,rgba(214,173,67,.045),transparent 30%),
+    #070707!important;
+  color:var(--wsl-text)!important;
+}
+body{font-family:Inter,"Segoe UI",Arial,sans-serif!important;letter-spacing:.005em}
+body:before{
+  opacity:.10!important;
+  background-image:linear-gradient(rgba(214,173,67,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(214,173,67,.08) 1px,transparent 1px)!important;
+  background-size:48px 48px!important;
+  mask-image:linear-gradient(to bottom,black,transparent 75%);
+}
+::selection{background:rgba(214,173,67,.32);color:#fff}
+.shell{width:min(1500px,calc(100% - 40px))!important;max-width:1500px!important}
+.top{
+  min-height:unset!important;margin-top:18px!important;padding:20px 24px!important;
+  display:flex!important;align-items:center!important;justify-content:space-between!important;
+  gap:18px!important;border:1px solid var(--wsl-line)!important;border-radius:18px!important;
+  background:linear-gradient(110deg,rgba(25,21,13,.98),rgba(12,12,11,.98))!important;
+  box-shadow:0 12px 34px rgba(0,0,0,.32)!important;
+}
+.brand{font-size:clamp(22px,2.3vw,30px)!important;letter-spacing:.045em!important;font-weight:900!important}
+.brand span,.footer span,.footer strong{color:var(--wsl-gold-bright)!important}
+.brand-sub{color:#e2d2a7!important;font-size:13px!important}
+.brand-note{color:var(--wsl-muted)!important}
+.quote{color:var(--wsl-gold-bright)!important}
+.quote span{color:#fff1c8!important}
+.status,.server-pill{
+  background:#17140e!important;border:1px solid var(--wsl-line)!important;
+  color:#e0d4b5!important;backdrop-filter:blur(12px)!important;border-radius:999px!important;
+}
+.status.live{color:var(--wsl-green)!important;border-color:rgba(69,214,160,.34)!important}
+.server-pill i{background:var(--wsl-gold)!important;box-shadow:0 0 10px rgba(214,173,67,.55)!important}
+.dashboard{gap:20px!important;padding-top:20px!important}
+.left-column,.right-column{gap:18px!important}
+.card{
+  position:relative!important;overflow:hidden!important;
+  background:linear-gradient(150deg,rgba(25,22,16,.99),rgba(13,12,10,.99) 72%)!important;
+  border:1px solid var(--wsl-line-soft)!important;border-radius:var(--wsl-radius)!important;
+  box-shadow:var(--wsl-shadow)!important;
+}
+.card:before{
+  height:1px!important;opacity:.9!important;
+  background:linear-gradient(90deg,transparent,rgba(246,215,126,.55),transparent)!important;
+}
+.eyebrow,.accent-label{color:var(--wsl-gold-bright)!important;letter-spacing:.16em!important}
+.signal-card{
+  border-color:rgba(214,173,67,.42)!important;
+  background:radial-gradient(ellipse at 95% 0%,rgba(214,173,67,.16),transparent 44%),linear-gradient(145deg,#211a0d,#12100c 62%,#100f0c)!important;
+}
+.signal h1{font-size:clamp(42px,6vw,66px)!important;letter-spacing:-.05em!important;font-weight:900!important}
+.signal h1.buy,.buy,.win{color:var(--wsl-green)!important}
+.signal h1.sell,.sell,.loss{color:var(--wsl-red)!important}
+.signal h1.wait,.wait,.open{color:var(--wsl-gold-bright)!important}
+.metrics div,.levels div,.diag div,.summary span,.summary b{
+  background:rgba(7,7,6,.68)!important;border:1px solid var(--wsl-line-soft)!important;border-radius:12px!important;
+}
+.metrics label,.levels span,.panel-title small,.section-heading p,.info-card p,.calc-subtitle,
+.telegram-card p,.account-grid span,.perf-grid span,.info-rows div,.account-date span,
+.brand-note,.footer small{color:var(--wsl-muted)!important}
+.metrics strong,.levels strong,.panel-title b,.section-heading h2,.info-card h2,
+.market-card h2,.performance-card h2,.telegram-card h2,.calculator-card h2{color:var(--wsl-text)!important}
+.lock-badge,.chart-live{
+  background:rgba(214,173,67,.11)!important;border:1px solid var(--wsl-line)!important;
+  color:var(--wsl-gold-bright)!important;border-radius:999px!important;box-shadow:none!important;
+}
+.tf-mini,.toolbar,.history-tabs{background:#0c0b09!important;border-color:var(--wsl-line-soft)!important;border-radius:12px!important}
+.tf-mini button,.toolbar button,.history-tab,.history-tabs button,.refresh-btn,
+.pay-action,.channel-access-btn,.profile-btn,.profile-logout,.profile-close,.adminBroadcastBtn{
+  background:#1b1811!important;border:1px solid var(--wsl-line-soft)!important;
+  color:#e7dfcc!important;border-radius:10px!important;box-shadow:none!important;
+  transition:background .18s ease,border-color .18s ease,transform .18s ease!important;
+}
+.tf-mini button.active,.toolbar button.active,.history-tab.active{
+  background:rgba(214,173,67,.17)!important;border-color:rgba(246,215,126,.72)!important;
+  color:var(--wsl-gold-bright)!important;box-shadow:inset 0 0 0 1px rgba(214,173,67,.08)!important;
+}
+button:hover,.pay-plan:hover,.telegram-connect:hover{
+  border-color:rgba(246,215,126,.58)!important;transform:translateY(-1px);
+}
+.refresh-btn,.pay-action,.channel-access-btn{
+  background:linear-gradient(135deg,#f7df99,#c79a35)!important;
+  border-color:#f0d17a!important;color:#1b1406!important;font-weight:900!important;
+  box-shadow:0 8px 22px rgba(214,173,67,.18)!important;
+}
+.chart-card{overflow:hidden!important}
+.chart-card .panel-title{border-bottom:1px solid var(--wsl-line-soft)!important}
+#chart{background:#080807!important;border-radius:0 0 16px 16px!important}
+.diag,.summary,.history-section,.daily-trade,.week-card,.table-wrap,
+.account-grid div,.perf-grid div,.calc-grid div,.info-rows div{
+  background:rgba(8,8,7,.68)!important;border-color:var(--wsl-line-soft)!important;
+}
+table{border-collapse:separate!important;border-spacing:0!important}
+th{color:var(--wsl-gold-bright)!important;background:rgba(214,173,67,.085)!important}
+th,td{border-color:var(--wsl-line-soft)!important}
+td{color:#e5dfd1!important}
+.history-tab:hover{color:var(--wsl-gold-bright)!important}
+.card-icon,.card-icon.blue,.card-icon.purple,.card-icon.gold{
+  background:rgba(214,173,67,.12)!important;border:1px solid var(--wsl-line)!important;
+  color:var(--wsl-gold-bright)!important;border-radius:12px!important;
+}
+.account-grid div,.perf-grid div,.calc-grid div{
+  border:1px solid var(--wsl-line-soft)!important;border-radius:12px!important;padding:12px!important;
+}
+.account-grid b,.perf-grid b,.calc-grid b{color:var(--wsl-text)!important}
+.account-date input,.calc-inputs input,.pay-input,input,select,textarea{
+  background:#0b0a08!important;color:var(--wsl-text)!important;
+  border:1px solid rgba(214,173,67,.20)!important;border-radius:10px!important;
+}
+.account-date input:focus,.calc-inputs input:focus,.pay-input:focus,input:focus,select:focus,textarea:focus{
+  outline:none!important;border-color:rgba(246,215,126,.78)!important;
+  box-shadow:0 0 0 3px rgba(214,173,67,.12)!important;
+}
+.quote-card{background:linear-gradient(145deg,rgba(214,173,67,.10),rgba(15,13,10,.98))!important}
+.quote-mark,.quote-card cite{color:var(--wsl-gold-bright)!important}
+.quote-card blockquote{color:#eee5d1!important}
+.pay-box,.pay-details,.premium-channel-box,.member-pill{
+  background:#14110c!important;border-color:var(--wsl-line)!important;color:var(--wsl-text)!important;
+}
+.pay-plan,.pay-plan.month{
+  background:linear-gradient(145deg,#f7df99,#c79a35)!important;
+  border:1px solid rgba(255,231,165,.76)!important;color:#1b1406!important;
+  box-shadow:0 10px 26px rgba(214,173,67,.16)!important;
+}
+.pay-plan .premium-text,.pay-plan b,.pay-plan .plan-days{color:#1b1406!important;text-shadow:none!important}
+.pay-plan .plan-days{background:rgba(255,255,255,.30)!important;border-color:rgba(30,23,5,.25)!important}
+.pay-address{background:#090806!important;border:1px solid var(--wsl-line-soft)!important;color:#f0d68e!important}
+.telegram-connect{
+  background:rgba(214,173,67,.11)!important;border:1px solid var(--wsl-line)!important;
+  color:var(--wsl-gold-bright)!important;
+}
+.premium-channel-box b,.member-pill b{color:var(--wsl-gold-bright)!important}
+.footer{border-top:1px solid var(--wsl-line)!important;color:var(--wsl-muted)!important}
+.profile-pop{background:#14110c!important;border-color:var(--wsl-line)!important}
+:focus-visible{outline:2px solid var(--wsl-gold)!important;outline-offset:3px}
+@media(max-width:700px){
+  .shell{width:calc(100% - 20px)!important}
+  .top{margin-top:9px!important;padding:15px!important;border-radius:15px!important;gap:12px!important}
+  .brand{font-size:clamp(18px,5vw,23px)!important}
+  .brand-sub{font-size:11px!important}.brand-note{font-size:10px!important}
+  .dashboard{padding-top:12px!important;gap:13px!important}
+  .left-column,.right-column{gap:13px!important}
+  .card{padding:15px!important;border-radius:14px!important}
+  .signal h1{font-size:44px!important}
+  #chart{min-height:300px!important}
+  .pay-plans{gap:8px!important}
+  .pay-plan{min-height:118px!important;padding:13px 8px!important}
+}
+@media(max-width:390px){
+  .shell{width:calc(100% - 14px)!important}
+  .top{padding:12px!important}.brand{font-size:18px!important}
+  .card{padding:12px!important}.metrics strong,.levels strong{font-size:14px!important}
+}
