@@ -16,6 +16,17 @@
 
   const todayMalaysia = () => malaysiaDayKey(Date.now());
 
+  // Trade timestamps are stored in Unix seconds; normalize legacy millisecond values.
+  const tradeTimeSeconds = (trade) => {
+    const raw = Number(trade?.exitTime || trade?.signalTime || trade?.createdAt || 0);
+    if (!Number.isFinite(raw) || raw <= 0) return 0;
+    return Math.floor(raw > 1e12 ? raw / 1000 : raw);
+  };
+  const endOfMalaysiaDaySeconds = (dayKey) => {
+    const ms = Date.parse(dayKey + 'T23:59:59+08:00');
+    return Number.isFinite(ms) ? Math.floor(ms / 1000) : 0;
+  };
+
   const accountR = (t) => {
     const result = String(t?.result || '').toUpperCase();
     const hits = Array.isArray(t?.hitTPs) ? t.hitTPs : [];
@@ -66,9 +77,11 @@
     const profit = rs.filter(r => r > 0).reduce((a, r) => a + r * oneR, 0);
     const loss = rs.filter(r => r < 0).reduce((a, r) => a + r * oneR, 0);
     const net = profit + loss;
-    const selectedEnd = rows.reduce((max, t) => Math.max(max, Number(t.exitTime || t.signalTime || t.createdAt || 0)), 0);
+    const dateInput = $('dailyDate');
+    const selectedDay = dateInput?.value || todayMalaysia();
+    const selectedEnd = rows.reduce((max, t) => Math.max(max, tradeTimeSeconds(t)), endOfMalaysiaDaySeconds(selectedDay));
     const cumulative = (Array.isArray(allClosed) ? allClosed : [])
-      .filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= selectedEnd)
+      .filter(t => tradeTimeSeconds(t) <= selectedEnd)
       .reduce((sum, t) => sum + accountR(t) * 2, 0);
     const set = (id, value) => {
       const el = $(id);
@@ -96,8 +109,8 @@
       const rows = closedDaily(allTrades, dateInput.value);
       const allClosed = (Array.isArray(allTrades) ? allTrades : [])
         .filter(t => t?.interval === '1min' && t?.status === 'CLOSED');
-      const target = rows.length ? Math.max(...rows.map(t => Number(t.exitTime || t.signalTime || t.createdAt || 0))) : Date.parse(dateInput.value + 'T23:59:59Z');
-      const cumulativeRows = allClosed.filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= target);
+      const target = rows.length ? Math.max(...rows.map(tradeTimeSeconds)) : endOfMalaysiaDaySeconds(dateInput.value);
+      const cumulativeRows = allClosed.filter(t => tradeTimeSeconds(t) <= target);
       render(rows, cumulativeRows);
     } catch (_) {}
   }
@@ -109,8 +122,8 @@
       const rows = closedDaily(allTrades, dateInput.value);
       const allClosed = (Array.isArray(allTrades) ? allTrades : [])
         .filter(t => t?.interval === '1min' && t?.status === 'CLOSED');
-      const target = rows.length ? Math.max(...rows.map(t => Number(t.exitTime || t.signalTime || t.createdAt || 0))) : Date.parse(dateInput.value + 'T23:59:59Z');
-      const cumulativeRows = allClosed.filter(t => Number(t.exitTime || t.signalTime || t.createdAt || 0) <= target);
+      const target = rows.length ? Math.max(...rows.map(tradeTimeSeconds)) : endOfMalaysiaDaySeconds(dateInput.value);
+      const cumulativeRows = allClosed.filter(t => tradeTimeSeconds(t) <= target);
       render(rows, cumulativeRows);
     });
   }
