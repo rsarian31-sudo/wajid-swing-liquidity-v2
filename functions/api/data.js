@@ -134,10 +134,11 @@ export async function onRequest({request,env,waitUntil}){
       const make=(rows,period)=> {
         const rs=rows.map(accountR);
         const totalR=Number(rs.reduce((a,b)=>a+b,0).toFixed(2));
-        const profit=Number(rs.filter(r=>r>0).reduce((a,b)=>a+b*8,0).toFixed(2));
-        const loss=Number(rs.filter(r=>r<0).reduce((a,b)=>a+b*8,0).toFixed(2));
+        const oneR=2; // $100 starting balance × 2% fixed risk per trade.
+        const profit=Number(rs.filter(r=>r>0).reduce((a,b)=>a+b*oneR,0).toFixed(2));
+        const loss=Number(rs.filter(r=>r<0).reduce((a,b)=>a+b*oneR,0).toFixed(2));
         const net=Number((profit+loss).toFixed(2));
-        return {period,startingBalance:100,riskPerTrade:8,trades:rows.length,profit,loss,net,totalR,currentBalance:Number((100+net).toFixed(2))};
+        return {period,startingBalance:100,riskPerTrade:2,trades:rows.length,profit,loss,net,totalR,currentBalance:Number((100+net).toFixed(2))};
       };
       const daily=closed1m.filter(t=>malaysiaDayKey(t.exitTime||t.signalTime||t.createdAt)===dayKey);
       const weekly=closed1m.filter(t=>malaysiaWeekKey(t.exitTime||t.signalTime||t.createdAt)===weekKey);
