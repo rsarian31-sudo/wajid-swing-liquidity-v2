@@ -1,26 +1,45 @@
 import { onRequest as dataRequest } from './functions/api/data.js';
 import { onRequest as healthRequest } from './functions/api/health.js';
-import { CONFIG, analyze, buildHistory } from './src/strategy.js';
+import { analyzeSmc } from './src/smc-core.js';
+import { marketConfig, INTERVAL_SECONDS, SMC_RULE_VERSION } from './src/smc-config.js';
+import { makeSmcTrade, advanceSmcTrade, dedupeSmcTrades } from './src/trade-manager.js';
+import { validateCandles, splitClosed } from './src/feed-health.js';
+import { fetchBitgetCandles, fetchBitgetTicker } from './src/bitget.js';
 import { fetchNewsContext } from './src/news.js';
 import { WajidTradeState } from './state.js';
-import { handleAuthRequest, getAuthUser } from './auth.js';
+import { handleAuthRequest, getAuthUser, hasActiveSubscription } from './auth.js';
 import { handlePaymentRequest } from './payments.js';
 
-const INTERVALS = ['1min', '5min'];
+// Legacy v4 intervals — used ONLY to read preserved historical trades.
+// The live signal system is SMC v1 (see src/smc-config.js): Gold 5M/15M,
+// BTC 15M/30M/1H. The old 1M signal system is retired.
+const LEGACY_INTERVALS = ['1min', '5min'];
 const SYMBOL = 'XAU/USD';
-const RULE_VERSION = 'volume-ob-retest-v4';
 const DATA_URL = 'https://api.twelvedata.com/time_series';
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 const TELEGRAM_WEBHOOK_URL = 'https://wajid-swing-liquidity-v2.rsarian31.workers.dev/telegram/webhook';
+// Fallback only. Prefer the TELEGRAM_CHANNEL_ID environment secret; see
+// resolveChannelId(). Never print this value in logs or reports.
 const TELEGRAM_CHANNEL_ID = '-1004402860410';
-const DUPLICATE_WINDOW_SECONDS = 15 * 60;
-const DUPLICATE_PRICE_TOLERANCE = 0.003;
 const MALAYSIA_UTC_OFFSET_MINUTES = 480;
-const SIGNAL_OFF_START_MINUTE = 510;
-const SIGNAL_ON_START_MINUTE = 1110;
-function isSignalSessionOpen(date = new Date()) {
-  const malaysiaMinutes = (date.getUTCHours()*60 + date.getUTCMinutes() + MALAYSIA_UTC_OFFSET_MINUTES) % 1440;
-  return malaysiaMinutes >= SIGNAL_ON_START_MINUTE || malaysiaMinutes < SIGNAL_OFF_START_MINUTE;
+
+// Live Telegram signals are OFF by default. Paper-trading results must be
+// reviewed and the owner must explicitly approve live activation before
+// setting LIVE_SIGNALS_ENABLED=true in the Worker environment.
+function liveSignalsEnabled(env) {
+  return String(env.LIVE_SIGNALS_ENABLED || '').trim().toLowerCase() === 'true';
+}
+// Channel ID resolution: environment secret first, then the channel ID the
+// bot detected from a channel post, then the legacy constant above.
+// The owner must set the TELEGRAM_CHANNEL_ID secret in Cloudflare;
+// the constant fallback exists only so existing deployments keep working.
+function resolveChannelId(env, telegram) {
+  return String(env.TELEGRAM_CHANNEL_ID || '').trim()
+    || String(telegram?.channelId || '').trim()
+    || TELEGRAM_CHANNEL_ID;
+}
+function tfLabel(interval) {
+  return { '5min': '5M', '15min': '15M', '30min': '30M', '1H': '1H' }[interval] || String(interval);
 }
 
 export default {
@@ -29,6 +48,7 @@ export default {
     if (url.pathname.startsWith('/api/auth/')) return handleAuthRequest(request, env);
     if (url.pathname.startsWith('/api/payment/')) return handlePaymentRequest(request, env);
     if (url.pathname === '/api/btc-signals' && (request.method === 'GET' || request.method === 'OPTIONS')) return btcSignalsApi(request, env);
+    if (url.pathname === '/api/btc-data' && request.method === 'GET') return btcDataApi(request, env);
     if (url.pathname === '/telegram/webhook' && request.method === 'POST') return telegramWebhook(request, env);
     if (url.pathname === '/api/telegram/users' && request.method === 'GET') return telegramUsers(request, env);
     if (url.pathname === '/api/telegram/broadcast' && request.method === 'POST') return telegramAdminBroadcast(request, env);
@@ -39,49 +59,22 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    // Malaysia session filter only; strategy logic is unchanged.
-    // OFF: 08:30-18:30 MYT. ON: 18:30-08:30 MYT.
-    const signalSessionOpen = isSignalSessionOpen();
+    // 24/7 operation: there is NO scheduled signal OFF period (KB §13).
+    // The old OFF 08:30–18:30 MYT window was removed completely and must
+    // never be reintroduced. Pipelines run HTF-first so the higher
+    // timeframe's structure direction is fresh when the lower TF runs.
     if (!env.TRADE_STATE) return;
-    // Telegram is optional for the trading engine. If configured, keep the webhook healthy.
     if (env.TELEGRAM_BOT_TOKEN) await ensureTelegramWebhook(env);
     if (env.TELEGRAM_BOT_TOKEN && env.DB && new Date().getUTCMinutes() % 15 === 0) await cleanupExpiredChannelMembers(env);
-    // BTC signals use the BTC dashboard's EMA 13/21 closed-candle rules and are sent to the existing XAU Telegram channel.
-    if (env.TRADE_STATE) await processBtcTelegramSignals(env);
-    const minute = new Date().getUTCMinutes();
-    // Process 5M first so its confirmed structure is available to the 1M engine.
-    // The 1M engine then uses that structure only as a directional filter.
-    const intervals = ['5min', '1min'];
-        for (const interval of intervals) {
-      const id = env.TRADE_STATE.idFromName('xauusd');
-      const stateStub = env.TRADE_STATE.get(id);
-      const lockOwner = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
-      const lockKey = 'scheduler:' + interval;
-      let locked = false;
+    const jobs = [
+      ['xau', '15min'], ['xau', '5min'],
+      ['btc', '1H'], ['btc', '30min'], ['btc', '15min'],
+    ];
+    for (const [market, interval] of jobs) {
       try {
-        const lockResponse = await stateStub.fetch('https://state/lock', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key: lockKey, owner: lockOwner, ttl: 90000 })
-        });
-        locked = lockResponse.ok;
-        if (!locked) {
-          console.log('skipping overlapping scheduler run', interval);
-          continue;
-        }
-        await runInterval(interval, env, signalSessionOpen);
+        await runSmcPipeline(market, interval, env);
       } catch (error) {
-        console.error('scheduled signal error', interval, error?.message || error);
-      } finally {
-        if (locked) {
-          try {
-            await stateStub.fetch('https://state/unlock', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ key: lockKey, owner: lockOwner })
-            });
-          } catch (_) {}
-        }
+        console.error('scheduled SMC pipeline error', market, interval, error?.message || error);
       }
     }
   }
@@ -90,7 +83,7 @@ export default {
 async function processTelegramChannelMember(member,env){
   if(!env?.DB||!env?.TRADE_STATE)return;
   const chatId=String(member?.chat?.id||'');
-  if(chatId!==TELEGRAM_CHANNEL_ID)return;
+  if(chatId!==resolveChannelId(env))return;
   const inviteLink=String(member?.invite_link?.invite_link||'').trim();
   const telegramUserId=String(member?.new_chat_member?.user?.id||member?.old_chat_member?.user?.id||'').trim();
   if(!inviteLink||!telegramUserId)return;
@@ -128,8 +121,9 @@ async function telegramAdminBroadcast(request, env) {
   if (!text) return Response.json({ ok:false, error:'MESSAGE_REQUIRED' }, { status:400 });
   if (text.length > 4000) return Response.json({ ok:false, error:'MESSAGE_TOO_LONG' }, { status:400 });
   try {
-    const result = await telegramApiCall(env, 'sendMessage', { chat_id: TELEGRAM_CHANNEL_ID, text, disable_web_page_preview: false });
-    return Response.json({ ok:true, messageId: result?.message_id || null, channelId: TELEGRAM_CHANNEL_ID }, { headers:{'Cache-Control':'no-store'} });
+    const channelId = resolveChannelId(env);
+    const result = await telegramApiCall(env, 'sendMessage', { chat_id: channelId, text, disable_web_page_preview: false });
+    return Response.json({ ok:true, messageId: result?.message_id || null, channelId }, { headers:{'Cache-Control':'no-store'} });
   } catch (error) {
     console.error('telegram admin broadcast failed', JSON.stringify({ error:error?.message || String(error) }));
     return Response.json({ ok:false, error:'TELEGRAM_SEND_FAILED', detail:String(error?.message || error) }, { status:502, headers:{'Cache-Control':'no-store'} });
@@ -165,191 +159,143 @@ function telegramAdminPage() {
   return new Response(html, { headers: { 'Content-Type': 'text/html; charset=UTF-8', 'Cache-Control': 'no-store' } });
 }
 
-async function runInterval(interval, env, signalSessionOpen = true) {
-  if (!env.TRADE_STATE) return;
-  const feed = await fetchClosedCandles(interval, env);
-  const candles = feed.closed;
-  const entryCandle = feed.current;
-  if (candles.length < 50) return;
-
-  const id = env.TRADE_STATE.idFromName('xauusd');
-  const state = env.TRADE_STATE.get(id);
-  const current = await getState(state);
-  const htfKey = interval === '1min' ? '5min' : null;
-  const htfStructure = htfKey ? current?.intervals?.[htfKey]?.structureDirection || null : null;
-  const news = await fetchNewsContext();
-  const analysis = analyze(candles, { interval, news, entryCandle, structureDirection: htfStructure, requireStructureAlignment: !!htfStructure });
-  const bucket = current.intervals[interval] || { active: null, activeTrades: [], trades: [], lastSignalId: null, lastCandleTime: null, structureDirection: null };
-  bucket.structureDirection = analysis.structureDirection || null;
-  // Fresh-account reset: never replay pre-reset signals. Start from the latest closed candle.
-  const freshStart = bucket.freshStartPending === true;
-  if (freshStart) {
-    bucket.freshStartPending = false;
-    bucket.lastCandleTime = candles.at(-1)?.time ?? null;
-    bucket.lastSignalId = null;
-    bucket.trades = [];
-    bucket.activeTrades = [];
-    bucket.active = null;
-  }
-
-  if (bucket.ruleVersion !== RULE_VERSION) {
-    bucket.active = null; bucket.activeTrades = []; bucket.trades = []; bucket.lastSignalId = null; bucket.lastCandleTime = null; bucket.ruleVersion = RULE_VERSION;
-  }
-
-  const telegram = ensureTelegramState(current, env);
-  await retryPendingTelegram(env, telegram);
-
-  // Persist every discovered historical signal for this timeframe.
-  // The previous version only seeded history once and capped it at 200 trades,
-  // which caused older signals to disappear from the website/report.
-  const discoveredHistory = buildHistory(candles, { interval })
-    .filter(t => t.result !== 'OPEN')
-    .map(t => ({ ...t, interval }));
-  if (discoveredHistory.length) {
-    bucket.trades = mergeTrades(bucket.trades, discoveredHistory);
-  }
-
-  const rawActiveList = Array.isArray(bucket.activeTrades) ? bucket.activeTrades : (bucket.active ? [bucket.active] : []);
-  // Collapse duplicate active trade IDs before processing so one candle can only emit one result.
-  const activeMap = new Map();
-  for (const trade of rawActiveList) {
-    if (!trade?.id) continue;
-    const previous = activeMap.get(trade.id);
-    if (!previous || Number(trade.lastProcessedTime || 0) >= Number(previous.lastProcessedTime || 0)) {
-      activeMap.set(trade.id, trade);
-    }
-  }
-  const activeList = [...activeMap.values()];
-  const stillActive = [];
-  for (const activeTrade of activeList) {
-    const events = advanceActiveTrade(activeTrade, candles);
-    for (const event of events.notifications) {
-      await sendTelegramWithQueue(env, event, telegram);
-      current.telegram = telegram;
-      await putState(state, current);
-    }
-    if (events.closed) { bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades); }
-    else stillActive.push(events.active);
-  }
-  bucket.activeTrades = stillActive;
-  bucket.active = stillActive[0] || null;
-
-  // During the Malaysia OFF window, continue monitoring existing trades so TP/SL
-  // results are delivered, but do not create or catch up any new signals.
-  if (!signalSessionOpen) {
-    bucket.trades = dedupeTrades(bucket.trades);
-    bucket.lastCandleTime = candles.at(-1)?.time ?? null;
-    current.intervals[interval] = bucket;
-    current.telegram = telegram;
-    await putState(state, current);
-    return;
-  }
-
-  // Catch up any signals created since the previous scheduler tick.
-  // This prevents a delayed/skipped cron invocation from permanently losing a signal.
-  const previousCandleTime = Number(bucket.lastCandleTime || 0);
-  const catchupSince = Math.floor(Date.now() / 1000) - 6 * 60 * 60;
-  const historicalSignals = freshStart ? [] : buildHistory(candles, { interval })
-    .filter(t => t && t.signalTime && t.direction && t.direction !== 'WAIT')
-    // Only reconcile signals newer than the last processed candle. This prevents
-    // the same historical signals from being recreated as new active trades every minute.
-    .filter(t => Number(t.signalTime) > previousCandleTime)
-    .filter(t => Number(t.signalTime) >= catchupSince)
-    .slice(-20);
-
-  const existingTradeKeys = new Set([
-    ...(Array.isArray(bucket.trades) ? bucket.trades : []),
-    ...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []),
-    ...(bucket.active ? [bucket.active] : [])
-  ].map(t => tradeKey(t)));
-
-  const candidates = [...historicalSignals];
-  if (analysis.signal?.direction && analysis.signal.direction !== 'WAIT' && analysis.signal.time) {
-    candidates.push({
-      signalTime: analysis.signal.time, direction: analysis.signal.direction,
-      entry: analysis.tradePlan?.entry, stopLoss: analysis.tradePlan?.stopLoss,
-      tp1: analysis.tradePlan?.tp1, tp2: analysis.tradePlan?.tp2, tp3: analysis.tradePlan?.tp3, tp4: analysis.tradePlan?.tp4,
-      risk: analysis.tradePlan?.risk, probability: analysis.signal.probability, score: analysis.signal.score
-    });
-  }
-
-  const uniqueCandidates = [];
-  const seenCandidateIds = new Set();
-  for (const candidate of candidates.sort((a,b) => Number(a.signalTime)-Number(b.signalTime))) {
-    const signalId = `${interval}:${candidate.signalTime}:${candidate.direction}`;
-    if (seenCandidateIds.has(signalId) || bucket.lastSignalId === signalId || existingTradeKeys.has(signalId)) continue;
-    seenCandidateIds.add(signalId);
-    uniqueCandidates.push({ candidate, signalId });
-  }
-
-  let lastSignalTelegramRetry = null;
-  for (const { candidate, signalId } of uniqueCandidates) {
-    const signal = {
-      direction: candidate.direction, time: Number(candidate.signalTime), entryTime: Number(candidate.signalTime),
-      price: Number(candidate.entry ?? candidate.price ?? 0),
-      probability: Number(candidate.probability ?? analysis.signal?.probability ?? 0),
-      score: Number(candidate.score ?? analysis.signal?.score ?? 0),
-      confirmation: { time: Number(candidate.confirmationTime ?? candidate.signalTime), price: Number(candidate.entry ?? candidate.price ?? 0) },
-      sweep: null
-    };
-    const plan = candidate.entry != null
-      ? { entry:candidate.entry, stopLoss:candidate.stopLoss, tp1:candidate.tp1, tp2:candidate.tp2, tp3:candidate.tp3, tp4:candidate.tp4, risk:candidate.risk }
-      : analysis.tradePlan;
-    if (!plan) continue;
-
-    if (isCrossTimeframeDuplicate(current, interval, signal)) {
-      bucket.lastSignalId = signalId;
-      bucket.lastDuplicate = { time: signal.time, direction: signal.direction, price: signal.price, reason: 'CROSS_TIMEFRAME_DUPLICATE' };
-      continue;
-    }
-
-    let active = makeActiveTrade(interval, signal, plan, analysis, news);
-    bucket.lastSignalId = signalId;
-    const telegramEvent = { type:'SIGNAL', interval, trade:active, probability:signal.probability, score:signal.score };
-    const telegramResult = await sendTelegramWithQueue(env, telegramEvent, telegram);
-    if (telegramResult?.ok !== true) lastSignalTelegramRetry = telegramEvent;
-    if (telegramResult?.messageIds) active = { ...active, telegramMessageIds: telegramResult.messageIds };
-    current.telegram = telegram;
-    await putState(state, current);
-    bucket.activeTrades = [...(Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []), active];
-    bucket.active = bucket.activeTrades[0] || active;
-    current.intervals[interval] = bucket;
-    current.telegram = telegram;
-    await putState(state, current);
-
-    const events = advanceActiveTrade(active, candles);
-    for (const event of events.notifications) {
-      await sendTelegramWithQueue(env, event, telegram);
-      current.telegram = telegram;
-      await putState(state, current);
-    }
-    if (events.closed) {
-      bucket.trades.push(events.closed); bucket.trades = dedupeTrades(bucket.trades);
-      bucket.activeTrades = bucket.activeTrades.filter(t => t.id !== active.id);
-    } else {
-      bucket.activeTrades = bucket.activeTrades.map(t => t.id === active.id ? events.active : t);
-    }
-    bucket.active = bucket.activeTrades[0] || null;
-  }
-  bucket.trades = dedupeTrades(bucket.trades);
-  bucket.lastCandleTime = candles.at(-1)?.time ?? null;
-  current.intervals[interval] = bucket;
-  current.telegram = telegram;
-  await putState(state, current);
-  // Retry the latest real signal once after the trade state is persisted.
-  // sentKeys prevents a duplicate if the first delivery already succeeded.
-  if (lastSignalTelegramRetry) {
-    await sendTelegramWithQueue(env, lastSignalTelegramRetry, telegram);
-    current.telegram = telegram;
-    await putState(state, current);
-  }
+// ---- SMC PIPELINES (smc-v1) -------------------------------------------
+// One independent pipeline per market+timeframe. BTC and Gold never share
+// trade state, dedup keys or signal history; only the SMC core is shared.
+function smcStub(env, market) {
+  return env.TRADE_STATE.get(env.TRADE_STATE.idFromName(market === 'btc' ? 'btc' : 'xauusd'));
+}
+function ensureSmcState(state) {
+  if (!state.smc || typeof state.smc !== 'object') state.smc = { version: 1, btc: {}, xau: {} };
+  for (const m of ['btc', 'xau']) if (!state.smc[m] || typeof state.smc[m] !== 'object') state.smc[m] = {};
+  return state.smc;
+}
+function smcBucket(smc, market, interval) {
+  const m = smc[market] || (smc[market] = {});
+  return m[interval] || (m[interval] = {
+    activeTrades: [], trades: [], lastSignalId: null, lastCandleTime: null,
+    structureDirection: null, feedHealth: 'UNKNOWN', lastFeedUpdate: null, lastFeedError: null,
+  });
 }
 
-function isCrossTimeframeDuplicate(_state, _interval, _signal) {
-  // Each timeframe is an independent signal stream.
-  // A valid 1M signal must not suppress a 5M signal, and vice versa.
-  // Same-timeframe duplicates are already blocked by bucket.lastSignalId.
-  return false;
+async function runSmcPipeline(market, interval, env) {
+  const cfg = marketConfig(market);
+  const seconds = INTERVAL_SECONDS[interval];
+  const stub = smcStub(env, market);
+  const lockOwner = String(Date.now()) + '-' + Math.random().toString(36).slice(2);
+  const lockKey = 'smc:' + market + ':' + interval;
+  let locked = false;
+  try {
+    const lockResponse = await stub.fetch('https://state/lock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: lockKey, owner: lockOwner, ttl: 90000 }),
+    });
+    locked = lockResponse.ok;
+    if (!locked) { console.log('skipping overlapping SMC run', market, interval); return { ok: false, reason: 'LOCKED' }; }
+
+    // 1. Fetch closed candles. Gold reuses the existing Twelve Data source;
+    // BTC uses the Bitget V3 public API. No silent provider fallbacks.
+    let feed;
+    if (market === 'btc') {
+      const r = await fetchBitgetCandles(interval, 300);
+      feed = { closed: r.closed, current: r.current, provider: 'Bitget', fetchedAt: r.fetchedAt };
+    } else {
+      feed = await fetchGoldCandles(interval, env);
+    }
+
+    const state = await getState(stub);
+    const smc = ensureSmcState(state);
+    const bucket = smcBucket(smc, market, interval);
+
+    // 2. Validate. HALTED disables new signal generation for this market
+    // and timeframe until the feed recovers. Open trades are not advanced
+    // on bad data either — never trade on stale or incomplete candles.
+    const validation = validateCandles(feed.closed, seconds);
+    bucket.feedHealth = validation.health;
+    bucket.lastFeedUpdate = Date.now();
+    if (validation.health === 'HALTED') {
+      bucket.lastFeedError = validation.issues.join(', ');
+      state.telegram = ensureTelegramState(state, env);
+      await putState(stub, state);
+      console.error('SMC feed HALTED', market, interval, validation.issues.join(', '));
+      return { ok: false, health: 'HALTED', issues: validation.issues };
+    }
+    bucket.lastFeedError = validation.health === 'HEALTHY' ? null : validation.issues.join(', ');
+
+    // 3. HTF context from the higher timeframe's own bucket (fresh because
+    // the scheduler runs HTF first). No HTF data = neutral, not a veto.
+    const htf = htfInterval(market, interval);
+    const htfDirection = htf ? smcBucket(smc, market, htf).structureDirection || null : null;
+
+    const news = market === 'xau' ? await fetchNewsContext().catch(() => null) : null;
+    const analysis = analyzeSmc(feed.closed, { market, htfDirection });
+    bucket.structureDirection = analysis.structureDirection;
+
+    const telegram = ensureTelegramState(state, env);
+    await retryPendingTelegram(env, telegram);
+    const live = liveSignalsEnabled(env);
+
+    // 4. Advance open trades (TP1–TP4 / SL) against the new closed candles.
+    const stillActive = [];
+    for (const trade of Array.isArray(bucket.activeTrades) ? bucket.activeTrades : []) {
+      const out = advanceSmcTrade(trade, feed.closed);
+      for (const n of out.notifications) {
+        if (live) {
+          await sendTelegramWithQueue(env, { type: n.type, market, interval, trade: n.trade, candleTime: n.candleTime }, telegram);
+        } else {
+          console.log('PAPER trade event (live Telegram OFF)', market, interval, n.type, trade.id);
+        }
+      }
+      if (out.closed) bucket.trades.push(out.closed);
+      else stillActive.push(out.active);
+    }
+    bucket.activeTrades = stillActive;
+    bucket.trades = dedupeSmcTrades(bucket.trades);
+
+    // 5. New signal? Only the full SMC sequence on the last closed candle.
+    // Deduplicated by signal id; one signal per setup, never forced.
+    if (analysis.signal?.direction && analysis.signal.direction !== 'WAIT' && analysis.tradePlan) {
+      const tradeId = `${market}:${interval}:${analysis.signal.time}:${analysis.signal.direction}`;
+      const known = bucket.lastSignalId === tradeId
+        || bucket.activeTrades.some(t => t.id === tradeId)
+        || bucket.trades.some(t => t.id === tradeId);
+      if (!known) {
+        const trade = makeSmcTrade(market, interval, analysis.signal, analysis.tradePlan, { paper: !live });
+        if (news) trade.news = news;
+        bucket.lastSignalId = tradeId;
+        if (live) {
+          const res = await sendTelegramWithQueue(env, {
+            type: 'SIGNAL', market, interval, trade,
+            probability: analysis.signal.probability, score: analysis.signal.score,
+          }, telegram);
+          if (res?.messageIds) trade.telegramMessageIds = res.messageIds;
+        } else {
+          console.log('PAPER signal (live Telegram OFF)', tradeId, JSON.stringify({
+            direction: trade.direction, entry: trade.entry, stopLoss: trade.stopLoss,
+            tp1: trade.tp1, tp2: trade.tp2, tp3: trade.tp3, tp4: trade.tp4,
+          }));
+        }
+        bucket.activeTrades.push(trade);
+      }
+    }
+
+    bucket.lastCandleTime = feed.closed.at(-1)?.time ?? null;
+    state.telegram = telegram;
+    await putState(stub, state);
+    return { ok: true, health: validation.health, signal: analysis.signal.direction, market, interval };
+  } catch (error) {
+    console.error('SMC pipeline error', market, interval, error?.message || error);
+    return { ok: false, error: String(error?.message || error) };
+  } finally {
+    if (locked) {
+      try {
+        await stub.fetch('https://state/unlock', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key: lockKey, owner: lockOwner }),
+        });
+      } catch (_) {}
+    }
+  }
 }
 
 function ensureTelegramState(state, env) {
@@ -358,7 +304,8 @@ function ensureTelegramState(state, env) {
   if (!Array.isArray(state.telegram.subscribers)) state.telegram.subscribers = [];
   if (!Array.isArray(state.telegram.pending)) state.telegram.pending = [];
   if (!Array.isArray(state.telegram.sentKeys)) state.telegram.sentKeys = [];
-  state.telegram.channelId = TELEGRAM_CHANNEL_ID;
+  state.telegram.channelId = resolveChannelId(env, state.telegram);
+  if (!Array.isArray(state.telegram.deliveryLog)) state.telegram.deliveryLog = [];
   const configured = String(env.TELEGRAM_CHAT_ID || '').trim();
   if (configured) {
     const found = state.telegram.subscribers.find(s => String(s.chatId) === configured);
@@ -435,7 +382,7 @@ async function processTelegramUpdate(update,env){
   else if(command==='/test'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ TEST is available to the bot owner only.');
     else if(existing?.active!==true)await telegramMessage(env,chatId,'⚪ Signal subscription is OFF. Send /start first.');
-    else{const testTrade={id:'telegram-test:'+Date.now(),interval:'1min',direction:'BUY',signalTime:Math.floor(Date.now()/1000),entry:4131.19,stopLoss:4129.19,tp1:4133.19,tp2:4135.19,tp3:4137.19,tp4:4139.19,probability:99,score:99,news:{bias:'TEST'}};const result=await sendTelegramWithQueue(env,{type:'SIGNAL',interval:'1min',trade:testTrade,probability:99,score:99},telegram);await telegramMessage(env,chatId,result?.ok===true?'🧪 TEST SIGNAL SENT SUCCESSFULLY.\n\nThe test signal was sent to the Premium Channel.':'⚠️ TEST SIGNAL FAILED.\n\nReason: '+String(result?.error||'Telegram delivery failed')+'\n\nChannel ID: '+String(telegram.channelId||TELEGRAM_CHANNEL_ID))}
+    else{const result=await sendTelegramTest(env,telegram);await telegramMessage(env,chatId,result?.ok===true?'🧪 TEST MESSAGE SENT.\n\nA clearly-labelled test message was sent to the Premium Channel. This was NOT a trading signal.':'⚠️ TEST MESSAGE FAILED.\n\nReason: '+String(result?.error||'Telegram delivery failed'))}
   }else if(command==='/broadcast'){
     if(!isAdmin)await telegramMessage(env,chatId,'⛔ BROADCAST is available to the bot owner only.');
     else{const body=String(message.text||'').trim().replace(/^\/broadcast(?:@[^\s]+)?\s*/i,'').replace(/^\/bc(?:@[^\s]+)?\s*/i,'').trim();if(!body)await telegramMessage(env,chatId,'📢 Usage: /broadcast Your message here');else{const result=await sendTelegramBroadcast(env,body,telegram);await telegramMessage(env,chatId,'📢 BROADCAST COMPLETE.\n\nDelivered: '+result.delivered+'\nFailed: '+result.failed+'\nActive users: '+result.total);}}
@@ -445,208 +392,59 @@ async function processTelegramUpdate(update,env){
   else if(command==='/help')await telegramMessage(env,chatId,'📊 WAJID Swing Liquidity\n\n📊 Daily Stats — today signals + W/L + win rate\n📅 Weekly Report — this week signals + W/L + win rate\n📈 All Stats — today + this week\n🔄 Refresh Stats — refresh current statistics\n🟢 Status — subscription status\n🧪 Test — owner only\n📢 Broadcast — owner only: /broadcast message\n\nCommands: /start /stop /daily /weekly /stats /status /test /broadcast /help');
   state.telegram=telegram;if(changed)await putState(stub,state);
 }
-function formatPeriodReport(state,period){const now=new Date(),start=period==='daily'?startOfMalaysiaDay(now):startOfMalaysiaWeek(now),end=period==='daily'?new Date(start.getTime()+86400000):new Date(start.getTime()+7*86400000),trades=collectTrades(state).filter(t=>{const raw=t.signalTime??t.createdAt??0;const numeric=Number(raw);const ts=Number.isFinite(numeric)?numeric*(numeric<100000000000?1000:1):Date.parse(String(raw));return Number.isFinite(ts)&&ts>=start.getTime()&&ts<end.getTime()}),signals=trades.length,wins=trades.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length,losses=trades.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length,openTrades=collectOpenTrades(state),open=openTrades.length,decided=wins+losses,winRate=decided?((wins/decided)*100).toFixed(1):'0.0',totalR=trades.filter(t=>t.status==='CLOSED').reduce((sum,t)=>sum+(Number.isFinite(Number(t.realizedR))?Number(t.realizedR):0),0),one=trades.filter(t=>t.interval==='1min'),five=trades.filter(t=>t.interval==='5min'),label=period==='daily'?`📊 DAILY REPORT · ${malaysiaDateLabel(start)}`:`📅 WEEKLY REPORT · ${malaysiaDateLabel(start)} → ${malaysiaDateLabel(new Date(end.getTime()-86400000))}`;const openLines=openTrades.map((t,i)=>{const tf=t.interval==='1min'?'1M':'5M';const tp2Win=t.tp2Hit?' · TP2 reached':'';return `🔹 ${i+1}. ${tf} ${t.direction} · Entry ${t.entry} · SL ${t.stopLoss}\n   TP1 ${t.tp1} · TP2 ${t.tp2} · TP3 ${t.tp3} · TP4 ${t.tp4}${tp2Win}`});return[`🔥 WAJID SWING LIQUIDITY`,label,`XAU/USD`,'',`📌 Signals: ${signals}`,`✅ Win: ${wins}`,`❌ Loss: ${losses}`,`⏳ Open: ${open}`,`🎯 Win Rate: ${winRate}%`,`📈 Total R: ${totalR>=0?'+':''}${totalR.toFixed(2)}R`,'',...(openLines.length?['📂 OPEN TRADES',...openLines]:['📂 OPEN TRADES','None']),'',`1M: ${one.length} signals · ${one.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length}W / ${one.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length}L`,`5M: ${five.length} signals · ${five.filter(t=>t.status==='CLOSED'&&(t.result==='WIN'||t.result==='FULL TP HIT'||t.result==='FINAL TP4 HIT'||t.result==='TP2 HIT CLOSE'||t.result==='TP3 HIT CLOSE')).length}W / ${five.filter(t=>t.status==='CLOSED'&&t.result==='LOSS').length}L`,'','🔒 Server-controlled results','🕐 Report timezone: Malaysia (UTC+8)'].join('\n')}
-function collectOpenTrades(state){const all=[];for(const interval of INTERVALS){const bucket=state?.intervals?.[interval];if(!bucket)continue;if(Array.isArray(bucket.activeTrades))all.push(...bucket.activeTrades);else if(bucket.active)all.push(bucket.active)}const seen=new Set();return all.filter(t=>t?.id&&!seen.has(t.id)&&(seen.add(t.id),true))}
-function collectTrades(state){const all=[];for(const interval of INTERVALS){const bucket=state?.intervals?.[interval];if(!bucket)continue;if(Array.isArray(bucket.trades))all.push(...bucket.trades);if(Array.isArray(bucket.activeTrades))all.push(...bucket.activeTrades);else if(bucket.active)all.push(bucket.active)}const seen=new Set();return all.filter(t=>t?.id&&!seen.has(t.id)&&(seen.add(t.id),true))}
+function formatPeriodReport(state,period){const now=new Date(),start=period==='daily'?startOfMalaysiaDay(now):startOfMalaysiaWeek(now),end=period==='daily'?new Date(start.getTime()+86400000):new Date(start.getTime()+7*86400000),trades=collectTrades(state).filter(t=>{const raw=t.signalTime??t.createdAt??0;const numeric=Number(raw);const ts=Number.isFinite(numeric)?numeric*(numeric<100000000000?1000:1):Date.parse(String(raw));return Number.isFinite(ts)&&ts>=start.getTime()&&ts<end.getTime()}),signals=trades.length,wins=trades.filter(t=>t.status==='CLOSED'&&Number(t.realizedR)>0).length,losses=trades.filter(t=>t.status==='CLOSED'&&Number(t.realizedR)<0).length,openTrades=collectOpenTrades(state),open=openTrades.length,decided=wins+losses,winRate=decided?((wins/decided)*100).toFixed(1):'0.0',totalR=trades.filter(t=>t.status==='CLOSED').reduce((sum,t)=>sum+(Number.isFinite(Number(t.realizedR))?Number(t.realizedR):0),0),label=period==='daily'?`📊 DAILY REPORT · ${malaysiaDateLabel(start)}`:`📅 WEEKLY REPORT · ${malaysiaDateLabel(start)} → ${malaysiaDateLabel(new Date(end.getTime()-86400000))}`;const byKey={};for(const t of trades){const k=(t.market||'xau')+':'+(t.interval||'');byKey[k]=byKey[k]||{total:0,w:0,l:0};byKey[k].total++;if(t.status==='CLOSED'&&Number(t.realizedR)>0)byKey[k].w++;if(t.status==='CLOSED'&&Number(t.realizedR)<0)byKey[k].l++;}const openLines=openTrades.map((t,i)=>{const mkt=t.market==='btc'?'BTC':'XAU';const tf=tfLabel(t.interval);const tp2=t.tp2Hit?' · TP2 milestone reached':'';return `🔹 ${i+1}. ${mkt} ${tf} ${t.direction} · Entry ${t.entry} · SL ${t.stopLoss}\n   TP1 ${t.tp1} · TP2 ${t.tp2} · TP3 ${t.tp3} · TP4 ${t.tp4}${tp2}`});const breakdown=Object.entries(byKey).sort().map(([k,v])=>`${k}: ${v.total} signals · ${v.w}W / ${v.l}L`);return[`🔥 WAJID SWING LIQUIDITY`,label,'BTC + XAU/USD · SMC v1','',`📌 Signals: ${signals}`,`✅ Win: ${wins}`,`❌ Loss: ${losses}`,`⏳ Open: ${open}`,`🎯 Win Rate: ${winRate}%`,`📈 Total R: ${totalR>=0?'+':''}${totalR.toFixed(2)}R`,'',...(openLines.length?['📂 OPEN TRADES',...openLines]:['📂 OPEN TRADES','None']),'',...breakdown,'','🔒 Server-controlled results · Wins/losses from actual exit prices','🕐 Report timezone: Malaysia (UTC+8)'].join('\n')}
+function collectOpenTrades(state){const all=[];const pushBucket=b=>{if(!b)return;if(Array.isArray(b.activeTrades))all.push(...b.activeTrades);else if(b.active)all.push(b.active)};for(const interval of LEGACY_INTERVALS)pushBucket(state?.intervals?.[interval]);if(state?.smc)for(const m of ['btc','xau'])for(const interval of Object.keys(state.smc[m]||{}))pushBucket(state.smc[m][interval]);const seen=new Set();return all.filter(t=>t?.id&&!seen.has(t.id)&&(seen.add(t.id),true))}
+function collectTrades(state){const all=[];const pushBucket=b=>{if(!b)return;if(Array.isArray(b.trades))all.push(...b.trades);if(Array.isArray(b.activeTrades))all.push(...b.activeTrades);else if(b.active)all.push(b.active)};for(const interval of LEGACY_INTERVALS)pushBucket(state?.intervals?.[interval]);if(state?.smc)for(const m of ['btc','xau'])for(const interval of Object.keys(state.smc[m]||{}))pushBucket(state.smc[m][interval]);const seen=new Set();return all.filter(t=>t?.id&&!seen.has(t.id)&&(seen.add(t.id),true))}
 const MALAYSIA_OFFSET_MS=8*60*60*1000;
 function malaysiaParts(date){const shifted=new Date(date.getTime()+MALAYSIA_OFFSET_MS);return{year:shifted.getUTCFullYear(),month:shifted.getUTCMonth(),day:shifted.getUTCDate(),weekday:shifted.getUTCDay()}}
 function startOfMalaysiaDay(date){const p=malaysiaParts(date);return new Date(Date.UTC(p.year,p.month,p.day)-MALAYSIA_OFFSET_MS)}
 function startOfMalaysiaWeek(date){const p=malaysiaParts(date),diff=p.weekday===0?-6:1-p.weekday;const dayStart=Date.UTC(p.year,p.month,p.day)+diff*86400000;return new Date(dayStart-MALAYSIA_OFFSET_MS)}
 function malaysiaDateLabel(date){const p=malaysiaParts(date);return [p.year,String(p.month+1).padStart(2,'0'),String(p.day).padStart(2,'0')].join('-')}
 
-async function fetchClosedCandles(interval,env){
-  const keys=[env.TWELVE_DATA_API_KEY,env.TWELVE_DATA_API_KEY_2,env.TWELVE_DATA_API_KEY_3,env.TWELVE_DATA_API_KEY_4].map(k=>String(k||'').trim()).filter(Boolean);
-  let lastError=null;
-  for(const apiKey of keys){
-    try{
-      const params=new URLSearchParams({symbol:SYMBOL,interval,outputsize:String(CONFIG.outputSize),order:'ASC',timezone:'UTC',apikey:apiKey});
-      const response=await fetch(DATA_URL+'?'+params);
-      const data=await response.json().catch(()=>null);
-      if(!response.ok||data?.status==='error'||data?.code)throw new Error(data?.message||'Twelve Data request failed');
-      const seconds=interval==='1min'?60:interval==='5min'?300:900,now=Math.floor(Date.now()/1000);
-      const candles=(data.values||[]).map(x=>({time:Math.floor(x.timestamp?Number(x.timestamp):Date.parse(String(x.datetime||''))/1000),open:Number(x.open),high:Number(x.high),low:Number(x.low),close:Number(x.close),volume:Number(x.volume||0)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
-      const unique=[],seen=new Set();
-      for(const candle of candles)if(!seen.has(candle.time)){seen.add(candle.time);unique.push(candle)}
-      const current=unique.length&&unique.at(-1).time+seconds>now?unique.at(-1):null,closed=current?unique.slice(0,-1):unique;
-      if(closed.length>=50)return{closed,current,provider:'Twelve Data'};
+// Gold candles — Twelve Data ONLY (the existing verified source).
+// The old Yahoo Finance fallback and the XAUS fallback have been REMOVED:
+// Yahoo is unofficial with terms that prohibit commercial reuse, and XAUS
+// synthesised 1m/5m OHLC candles from 5-minute sampled spot prices
+// (volume 0) — fabricated candles. On any Twelve Data failure this throws
+// and the pipeline HALTs that market instead of silently switching provider.
+// LICENSING LIMITATION: Twelve Data Basic is internal non-display only and
+// is NOT confirmed permitted for production Telegram signals. See README /
+// final report. Do not claim otherwise.
+async function fetchGoldCandles(interval, env) {
+  const keys = [env.TWELVE_DATA_API_KEY, env.TWELVE_DATA_API_KEY_2, env.TWELVE_DATA_API_KEY_3, env.TWELVE_DATA_API_KEY_4]
+    .map(k => String(k || '').trim()).filter(Boolean);
+  const seconds = INTERVAL_SECONDS[interval];
+  let lastError = null;
+  const diagnostics = [];
+  for (const apiKey of keys) {
+    try {
+      const params = new URLSearchParams({ symbol: SYMBOL, interval, outputsize: '300', order: 'ASC', timezone: 'UTC', apikey: apiKey });
+      const response = await fetch(DATA_URL + '?' + params);
+      const data = await response.json().catch(() => null);
+      if (!response.ok || data?.status === 'error' || data?.code) throw new Error(data?.message || 'Twelve Data request failed');
+      const candles = (data.values || []).map(x => ({
+        time: Math.floor(x.timestamp ? Number(x.timestamp) : Date.parse(String(x.datetime || '')) / 1000),
+        open: Number(x.open), high: Number(x.high), low: Number(x.low), close: Number(x.close), volume: Number(x.volume || 0),
+      })).filter(x => [x.time, x.open, x.high, x.low, x.close].every(Number.isFinite)).sort((a, b) => a.time - b.time);
+      const unique = [], seen = new Set();
+      for (const candle of candles) if (!seen.has(candle.time)) { seen.add(candle.time); unique.push(candle); }
+      const { closed, current } = splitClosed(unique, seconds);
+      if (closed.length >= 50) return { closed, current, provider: 'Twelve Data', fetchedAt: Date.now(), diagnostics };
       throw new Error('Twelve Data returned insufficient closed candles');
-    }catch(error){lastError=error}
-  }
-
-  // Keep Telegram signal generation alive when Twelve Data is rate-limited or unavailable.
-  // These fallbacks mirror the public /api/data feed order so the site and Telegram
-  // can continue using the same free market-data sources.
-  try{
-    const yi=interval==='1min'?'1m':'5m';
-    const y=new URL('https://query1.finance.yahoo.com/v8/finance/chart/XAUUSD=X');
-    y.searchParams.set('range','5d'); y.searchParams.set('interval',yi); y.searchParams.set('includePrePost','false');
-    const response=await fetch(y.toString(),{headers:{Accept:'application/json','User-Agent':'Mozilla/5.0'}});
-    const data=await response.json().catch(()=>null);
-    const q=data?.chart?.result?.[0],v=q?.indicators?.quote?.[0]||{};
-    if(q?.timestamp){
-      const candles=q.timestamp.map((ts,i)=>({time:Number(ts),open:Number(v.open?.[i]),high:Number(v.high?.[i]),low:Number(v.low?.[i]),close:Number(v.close?.[i]),volume:Number(v.volume?.[i]||0)})).filter(x=>[x.time,x.open,x.high,x.low,x.close].every(Number.isFinite)).sort((a,b)=>a.time-b.time);
-      if(candles.length>=50){
-        const seconds=interval==='1min'?60:interval==='5min'?300:900,now=Math.floor(Date.now()/1000);
-        const current=candles.at(-1).time+seconds>now?candles.at(-1):null,closed=current?candles.slice(0,-1):candles;
-        if(closed.length>=50)return{closed,current,provider:'Yahoo Finance'};
-      }
-    }
-  }catch(error){lastError=error}
-
-  try{
-    const xr=await fetch('https://xaus.com/api/v1/intraday?symbol=xau&hours=48',{headers:{Accept:'application/json'}});
-    const xd=await xr.json().catch(()=>null),points=Array.isArray(xd?.points)?xd.points:[];
-    const seconds=interval==='1min'?60:interval==='5min'?300:900,buckets=new Map();
-    for(const p of points){
-      const raw=Number(p?.t),ts=Number.isFinite(raw)?(raw>100000000000?Math.floor(raw/1000):Math.floor(raw)):Math.floor(Date.parse(String(p?.t||''))/1000),price=Number(p?.p);
-      if(!Number.isFinite(ts)||!Number.isFinite(price)||price<=0)continue;
-      const b=Math.floor(ts/seconds)*seconds,old=buckets.get(b);
-      if(!old)buckets.set(b,{time:b,open:price,high:price,low:price,close:price,volume:0});
-      else{old.high=Math.max(old.high,price);old.low=Math.min(old.low,price);old.close=price}
-    }
-    const candles=[...buckets.values()].sort((a,b)=>a.time-b.time);
-    if(candles.length>=50){
-      const now=Math.floor(Date.now()/1000),current=candles.at(-1).time+seconds>now?candles.at(-1):null,closed=current?candles.slice(0,-1):candles;
-      if(closed.length>=50)return{closed,current,provider:'XAUS'};
-    }
-  }catch(error){lastError=error}
-
-  throw lastError||new Error('No usable XAU/USD market data feed');
-}
-function makeActiveTrade(interval,signal,plan,analysis,news){return{id:interval+':'+signal.time+':'+signal.direction,interval,direction:signal.direction,signalTime:signal.entryTime||signal.time,confirmationTime:signal.confirmation?.time??signal.time,confirmationPrice:Number(signal.confirmation?.price??0),signalPrice:Number(signal.price.toFixed(2)),probability:signal.probability,score:signal.score,entry:Number(plan.entry.toFixed(2)),stopLoss:Number(plan.stopLoss.toFixed(2)),tp1:Number(plan.tp1.toFixed(2)),tp2:Number(plan.tp2.toFixed(2)),tp3:Number(plan.tp3.toFixed(2)),tp4:Number(plan.tp4.toFixed(2)),risk:Number(plan.risk.toFixed(2)),sweep:analysis.signal?.sweep||null,news:news||null,tp1Hit:false,tp2Hit:false,tp3Hit:false,tp4Hit:false,hitTPs:[],realizedR:0,lastProcessedTime:Number(signal.entryTime||signal.time)-1,telegramMessageIds:{},createdAt:Date.now()}}
-function advanceActiveTrade(active,candles){
-  const notifications=[];
-  const next={...active,hitTPs:Array.isArray(active.hitTPs)?[...active.hitTPs]:[]};
-  const lastProcessed=Number.isFinite(Number(active.lastProcessedTime))?Number(active.lastProcessedTime):Number(active.signalTime)-1;
-  const start=candles.findIndex(c=>Number(c.time)>lastProcessed);
-  if(start<0)return{active:next,closed:null,notifications};
-
-  for(let i=start;i<candles.length;i++){
-    const candle=candles[i];
-    next.lastProcessedTime=candle.time;
-
-    // TP milestones are evaluated first. Once TP1 is reached, the stop becomes
-    // the entry price (break-even). TP2 is the WIN milestone, but the trade
-    // remains OPEN until TP4 or the break-even stop is hit.
-    const levels=[
-      ['TP1',1,'tp1','tp1Hit'],
-      ['TP2',2,'tp2','tp2Hit'],
-      ['TP3',3,'tp3','tp3Hit'],
-      ['TP4',4,'tp4','tp4Hit']
-    ];
-
-    for(const [label,r,key,flag] of levels){
-      const hit=active.direction==='BUY'?candle.high>=active[key]:candle.low<=active[key];
-      if(hit&&!next[flag]){
-        next[flag]=true;
-        next.hitTPs.push(label);
-        next.realizedR=Number(Math.max(Number(next.realizedR||0),r).toFixed(2));
-        notifications.push({type:label,interval:active.interval,trade:next,candleTime:candle.time});
-
-        if(label==='TP1'){
-          // TP1 = break-even activation. No WIN yet.
-          next.stopLoss=Number(next.entry.toFixed(2));
-        }
-
-        if(label==='TP2'){
-          // TP2 = WIN milestone. Keep the position open and keep SL at Entry.
-          // TP2 is only a milestone. Keep the trade OPEN until TP4 or
-          // the Entry stop is hit.
-          next.result='OPEN';
-          next.status='OPEN';
-          next.stopLoss=Number(next.entry.toFixed(2));
-        }
-
-        if(label==='TP4'){
-          return{
-            active:null,
-            closed:closeTrade(next,'FINAL TP4 HIT',4,next.tp4,candle.time,'TP4 hit'),
-            notifications
-          };
-        }
-      }
-    }
-
-    // Check the CURRENT stop after TP1/TP2 updates. Before TP1 this is the
-    // original SL; after TP1 it is Entry (break-even).
-    const currentStop=Number(next.stopLoss);
-    const sl=active.direction==='BUY'?candle.low<=currentStop:candle.high>=currentStop;
-    if(sl){
-      if(next.tp2Hit){
-        // TP2/TP3 milestones have been reached. If Entry is hit, close
-        // with the highest realized account milestone: +1R.
-        next.realizedR=1;
-        const closeLabel=next.tp3Hit?'TP3 HIT CLOSE':'TP2 HIT CLOSE';
-        return{
-          active:null,
-          closed:closeTrade(next,closeLabel,1,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP2'),
-          notifications:[...notifications,{type:'SL_AFTER_TP2',interval:active.interval,trade:next,candleTime:candle.time}]
-        };
-      }
-
-      if(next.tp1Hit){
-        // TP1 already moved SL to Entry. A later touch of Entry before TP2 is
-        // a break-even close, not a loss.
-        next.realizedR=0;
-        return{
-          active:null,
-          closed:closeTrade(next,'BREAK EVEN',0,currentStop,candle.time,'SL_AT_ENTRY_AFTER_TP1'),
-          notifications:[...notifications,{type:'BREAK_EVEN',interval:active.interval,trade:next,candleTime:candle.time}]
-        };
-      }
-
-      next.realizedR=Number((Number(next.realizedR||0)-1).toFixed(2));
-      return{
-        active:null,
-        closed:closeTrade(next,'LOSS',next.realizedR,currentStop,candle.time,'SL_BEFORE_TP1'),
-        notifications:[...notifications,{type:'LOSS',interval:active.interval,trade:next,candleTime:candle.time}]
-      };
+    } catch (error) {
+      lastError = error;
+      diagnostics.push(String(error?.message || error).slice(0, 160));
     }
   }
-
-  return{active:next,closed:null,notifications};
-}
-function tradeKey(t) {
-  return `${t.interval || ''}:${t.signalTime || ''}:${t.direction || ''}`;
-}
-
-function dedupeTrades(trades = []) {
-  const map = new Map();
-  for (const trade of trades || []) {
-    if (!trade) continue;
-    const key = tradeKey(trade);
-    if (!key || key === '::') continue;
-    const previous = map.get(key);
-    // Prefer the persisted/live record with the most complete lifecycle data.
-    if (!previous) map.set(key, trade);
-    else {
-      const previousScore =
-        Number(!!previous.exitTime) * 4 +
-        Number(!!previous.result && previous.result !== 'OPEN') * 2 +
-        Number(Array.isArray(previous.hitTPs) ? previous.hitTPs.length : 0);
-      const currentScore =
-        Number(!!trade.exitTime) * 4 +
-        Number(!!trade.result && trade.result !== 'OPEN') * 2 +
-        Number(Array.isArray(trade.hitTPs) ? trade.hitTPs.length : 0);
-      if (currentScore >= previousScore) map.set(key, trade);
-    }
-  }
-  return [...map.values()].sort((a,b) => Number(a.signalTime || 0) - Number(b.signalTime || 0));
-}
-
-function mergeTrades(existing = [], discovered = []) {
-  return dedupeTrades([...(existing || []), ...(discovered || [])]);
-}
-
-function closeTrade(trade,result,realizedR,exit,exitTime,reason){
-  return{id:trade.id,interval:trade.interval,direction:trade.direction,signalTime:trade.signalTime,confirmationTime:trade.confirmationTime??null,swingTime:trade.sweep?.level?.time??null,swingType:trade.sweep?.level?.type??null,swingPrice:Number.isFinite(Number(trade.sweep?.level?.price))?Number(Number(trade.sweep.level.price).toFixed(2)):null,entry:trade.entry,stopLoss:trade.stopLoss,tp1:trade.tp1,tp2:trade.tp2,tp3:trade.tp3,tp4:trade.tp4,risk:trade.risk,tp1Hit:!!trade.tp1Hit,tp2Hit:!!trade.tp2Hit,tp3Hit:!!trade.tp3Hit,tp4Hit:!!trade.tp4Hit,hitTPs:Array.isArray(trade.hitTPs)?trade.hitTPs:[],realizedR,result,status:'CLOSED',exit:Number(exit.toFixed(2)),exitTime,reason,news:trade.news||null,entryRule:'ORDER_BLOCK_CREATED_ENTRY'};
+  console.error('Gold feed failed (Twelve Data only, no fallback)', interval, diagnostics.join(' | '));
+  throw lastError || new Error('No usable XAU/USD market data feed');
 }
 async function getState(stub){const response=await stub.fetch('https://state/');return response.json()}
 async function putState(stub,state){await stub.fetch('https://state/replace',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(state)})}
 async function createPremiumChannelInvite(env,userId,expiresAt){
   if(!env?.TELEGRAM_BOT_TOKEN)return null;
   try{
-    const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/createChatInviteLink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:TELEGRAM_CHANNEL_ID,name:'Premium '+String(userId).slice(0,8),expire_date:Math.floor(Number(expiresAt)/1000),member_limit:1})});
+    const response=await fetch(TELEGRAM_API+encodeURIComponent(env.TELEGRAM_BOT_TOKEN)+'/createChatInviteLink',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({chat_id:resolveChannelId(env),name:'Premium '+String(userId).slice(0,8),expire_date:Math.floor(Number(expiresAt)/1000),member_limit:1})});
     const data=await response.json().catch(()=>null);
     return data?.ok===true?data?.result?.invite_link||null:null;
   }catch(_){return null}
@@ -664,7 +462,7 @@ async function cleanupExpiredChannelMembers(env){
     const active=row?.subscription_status==='active'&&Number(row?.subscription_expires_at||0)>Date.now();
     if(active)continue;
     try{
-      await telegramApiCall(env,'banChatMember',{chat_id:TELEGRAM_CHANNEL_ID,user_id:Number(subscriber.chatId),until_date:Math.floor(Date.now()/1000)+60,revoke_messages:false});
+      await telegramApiCall(env,'banChatMember',{chat_id:resolveChannelId(env),user_id:Number(subscriber.chatId),until_date:Math.floor(Date.now()/1000)+60,revoke_messages:false});
       subscriber.active=false;
       subscriber.channelRemovedAt=Date.now();
       changed=true;
@@ -673,159 +471,122 @@ async function cleanupExpiredChannelMembers(env){
   if(changed)await putState(stub,state);
 }
 
+// BTC signals: SMC v1 history from the Durable Object (per pipeline).
+// The old Binance EMA 13/21 cross prototype has been removed entirely.
 async function btcSignalsApi(request, env) {
-  const headers = {
-    'Content-Type': 'application/json; charset=utf-8',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type',
-    'Cache-Control': 'no-store'
-  };
-  if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers });
-  if (!env.TRADE_STATE) return Response.json({ ok:false, error:'Trade state unavailable', signals:[] }, { status:503, headers });
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   try {
-    const stub = env.TRADE_STATE.get(env.TRADE_STATE.idFromName('xauusd'));
+    const url = new URL(request.url);
+    const interval = ['15min', '30min', '1H'].includes(url.searchParams.get('interval')) ? url.searchParams.get('interval') : null;
+    const stub = env.TRADE_STATE.get(env.TRADE_STATE.idFromName('btc'));
     const state = await getState(stub);
-    const signals = Array.isArray(state.telegram?.btcSignalHistory) ? state.telegram.btcSignalHistory : [];
-    return Response.json({ ok:true, updatedAt:Date.now(), count:signals.length, signals }, { headers });
+    const smc = state?.smc?.btc || {};
+    const intervals = interval ? [interval] : ['15min', '30min', '1H'];
+    const items = [];
+    for (const tf of intervals) {
+      const bucket = smc[tf] || {};
+      for (const t of [...(bucket.trades || []), ...(bucket.activeTrades || [])]) {
+        items.push({
+          id: t.id, symbol: 'BTC/USDT', market: 'btc', timeframe: tfLabel(tf), interval: tf,
+          side: t.direction, direction: t.direction, entry: t.entry, stopLoss: t.stopLoss,
+          tp: [t.tp1, t.tp2, t.tp3, t.tp4], tp1: t.tp1, tp2: t.tp2, tp3: t.tp3, tp4: t.tp4,
+          risk: t.risk, candleTime: (t.signalTime || 0) * 1000, detectedAt: t.createdAt,
+          status: t.status, result: t.result || null, realizedR: t.realizedR ?? null,
+          tp1Hit: !!t.tp1Hit, tp2Hit: !!t.tp2Hit, tp3Hit: !!t.tp3Hit, tp4Hit: !!t.tp4Hit,
+          source: 'Bitget BTCUSDT', rule: 'SMC Sweep/MSS/BOS/OB/FVG · Closed candle',
+          confirmations: t.confirmations || null,
+        });
+      }
+    }
+    items.sort((a, b) => b.candleTime - a.candleTime);
+    return Response.json({ ok: true, interval: interval || null, signals: items.slice(0, 2000), liveSignalsEnabled: liveSignalsEnabled(env) }, { headers });
   } catch (error) {
-    return Response.json({ ok:false, error:'Unable to read BTC signal history', signals:[] }, { status:500, headers });
+    return Response.json({ ok: false, error: String(error?.message || error) }, { status: 503, headers });
   }
 }
 
-async function processBtcTelegramSignals(env) {
-  const id = env.TRADE_STATE.idFromName('xauusd');
-  const stub = env.TRADE_STATE.get(id);
-  const state = await getState(stub);
-  const telegram = ensureTelegramState(state, env);
-  if (!telegram.btcLastSignalIds || typeof telegram.btcLastSignalIds !== 'object') telegram.btcLastSignalIds = {};
-  const now = Date.now();
-  const api = 'https://data-api.binance.vision/api/v3/klines';
-  const fetchCandles = async (interval, limit) => {
-    const response = await fetch(api + '?symbol=BTCUSDT&interval=' + interval + '&limit=' + limit, { headers: { 'Accept': 'application/json' } });
-    if (!response.ok) throw new Error('BTC Binance ' + interval + ' HTTP ' + response.status);
-    const rows = await response.json();
-    if (!Array.isArray(rows)) throw new Error('BTC Binance returned invalid ' + interval + ' candles');
-    return rows.map(k => ({ t:Number(k[0]), o:Number(k[1]), h:Number(k[2]), l:Number(k[3]), c:Number(k[4]), v:Number(k[5]), closeTime:Number(k[6]) }));
+// BTC market data endpoint for the BTC page: live Bitget candles (20s
+// cache) + the current SMC analysis + active/closed trades for the
+// requested timeframe. Auth gating mirrors /api/data. On a feed failure
+// the response reports health HALTED with no candles — never fabricated.
+function summarizeTrades(trades) {
+  const closed = trades.filter(t => t.status === 'CLOSED');
+  const wins = closed.filter(t => Number(t.realizedR) > 0);
+  const losses = closed.filter(t => Number(t.realizedR) < 0);
+  const totalR = closed.reduce((sum, t) => sum + (Number.isFinite(Number(t.realizedR)) ? Number(t.realizedR) : 0), 0);
+  const sum = arr => arr.reduce((a, t) => a + (Number.isFinite(Number(t.realizedR)) ? Number(t.realizedR) : 0), 0);
+  const profitFactor = losses.length && sum(losses) !== 0 ? Math.abs(sum(wins) / sum(losses)) : (wins.length ? Infinity : 0);
+  return {
+    total: trades.length, closed: closed.length, open: trades.length - closed.length,
+    wins: wins.length, losses: losses.length,
+    winRate: closed.length ? +((wins.length / closed.length) * 100).toFixed(1) : 0,
+    totalR: +totalR.toFixed(2), profitFactor: Number.isFinite(profitFactor) ? +profitFactor.toFixed(2) : null,
   };
-  const ema = (values, period) => {
-    const out = Array(values.length).fill(null), alpha = 2 / (period + 1);
-    let prev = null;
-    for (let i=0;i<values.length;i++) {
-      const value = values[i];
-      if (!Number.isFinite(value)) { out[i] = prev; continue; }
-      prev = prev === null ? value : alpha * value + (1-alpha) * prev;
-      out[i] = prev;
-    }
-    return out;
-  };
-  const makeSignal = (candles, label, nextOpen) => {
-    if (candles.length < 40) return null;
-    const close = candles.map(x=>x.c), fast = ema(close,13), slow = ema(close,21);
-    const fastSm = ema(fast.map(x=>x===null?NaN:x),14), slowSm = ema(slow.map(x=>x===null?NaN:x),14);
-    const i = candles.length-1;
-    if ([fast[i],slow[i],fastSm[i],slowSm[i]].some(x=>!Number.isFinite(x))) return null;
-    const top = Math.max(fast[i],slow[i],fastSm[i],slowSm[i]), bottom = Math.min(fast[i],slow[i],fastSm[i],slowSm[i]);
-    let upCross=-1, downCross=-1;
-    for(let j=i;j>=0&&j>i-3;j--) {
-      if(upCross<0&&fast[j]>slow[j]&&fast[j-1]<=slow[j-1]) upCross=j;
-      if(downCross<0&&fast[j]<slow[j]&&fast[j-1]>=slow[j-1]) downCross=j;
-    }
-    const buy=fast[i]>slow[i]&&close[i]>top&&upCross>=0, sell=fast[i]<slow[i]&&close[i]<bottom&&downCross>=0;
-    if(!buy&&!sell) return null;
-    const side=buy?'BUY':'SELL', dir=buy?1:-1, entry=Number.isFinite(nextOpen)?nextOpen:close[i], back=i-4;
-    if(back<0) return null;
-    const sl=buy?candles[back].l:candles[back].h;
-    if(!Number.isFinite(sl)||(buy?sl>=entry:sl<=entry)) return null;
-    const crossIndex=buy?upCross:downCross, crossTime=candles[crossIndex].t;
-    return { id:label+'-ema1321-'+crossTime+'-'+side, label, side, entry, sl, tp:[10,20,30,40,50].map(d=>entry+dir*d), candleTime:candles[i].t,
-      reason:side==='BUY'?'EMA 13 above EMA 21 and close above both smoothed EMA lines.':'EMA 13 below EMA 21 and close below both smoothed EMA lines.' };
-  };
+}
+
+async function btcDataApi(request, env) {
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
   try {
-    const [raw5, raw15, raw30, ticker] = await Promise.all([
-      fetchCandles('5m', 300),
-      fetchCandles('15m', 300),
-      fetchCandles('30m', 200),
-      fetch('https://data-api.binance.vision/api/v3/ticker/price?symbol=BTCUSDT').then(async r=>{if(!r.ok)throw new Error('BTC ticker HTTP '+r.status);return r.json()})
-    ]);
-    const closed5=raw5.filter(c=>c.closeTime<now);
-    const closed15=raw15.filter(c=>c.closeTime<now);
-    const closed30=raw30.filter(c=>c.closeTime<now);
-    const aggregate45 = rows => {
-      const groups = new Map();
-      for (const c of rows) {
-        const start = Math.floor(c.t / 2700000) * 2700000;
-        if (!groups.has(start)) groups.set(start, []);
-        groups.get(start).push(c);
-      }
-      return [...groups.entries()]
-        .filter(([start, candles]) => candles.length === 3 && candles[0].t === start && candles[1].t === start + 900000 && candles[2].t === start + 1800000 && candles[2].closeTime < now)
-        .map(([start, candles]) => ({
-          t:start, o:candles[0].o, h:Math.max(...candles.map(c=>c.h)),
-          l:Math.min(...candles.map(c=>c.l)), c:candles[2].c,
-          v:candles.reduce((sum,c)=>sum+c.v,0), closeTime:candles[2].closeTime
-        }));
-    };
-    const closed45=aggregate45(closed15);
-    const nextOpen = (closedRows, allRows) => {
-      const last=closedRows[closedRows.length-1];
-      return last ? allRows.find(c=>c.t>last.t)?.o : undefined;
-    };
-    const signals=[
-      makeSignal(closed5,'5M',nextOpen(closed5,raw5)),
-      makeSignal(closed15,'15M',nextOpen(closed15,raw15)),
-      makeSignal(closed30,'30M',nextOpen(closed30,raw30)),
-      makeSignal(closed45,'45M',nextOpen(closed45,raw15))
-    ].filter(Boolean);
-    if (!Array.isArray(telegram.btcSignalHistory)) telegram.btcSignalHistory = [];
-    for (const signal of signals) {
-      if (String(telegram.btcLastSignalIds[signal.label]||'')===signal.id) continue;
-      const historyItem = {
-        id:signal.id, symbol:'BTC/USDT', timeframe:signal.label, side:signal.side,
-        entry:signal.entry, sl:signal.sl, tp:signal.tp, candleTime:signal.candleTime,
-        detectedAt:Date.now(), status:'SIGNAL', source:'Binance BTCUSDT',
-        rule:'EMA 13/21 · Closed candle confirmation', reason:signal.reason
-      };
-      telegram.btcSignalHistory.unshift(historyItem);
-      telegram.btcSignalHistory = telegram.btcSignalHistory.slice(0,2000);
-      telegram.btcLastSignalIds[signal.label]=signal.id;
-      telegram.btcLastSignalIds.updatedAt=Date.now();
-      state.telegram=telegram;
-      await putState(stub,state);
-      const direction=signal.side==='BUY'?'🟢 BUY':'🔴 SELL';
-      const text=[
-        '₿ WAJID BTC SIGNAL · '+signal.label,
-        '',
-        direction+' · BTC/USDT',
-        'Entry: '+Number(signal.entry).toFixed(2),
-        'SL: '+Number(signal.sl).toFixed(2),
-        ...signal.tp.map((p,i)=>'TP'+(i+1)+': '+Number(p).toFixed(2)),
-        '',
-        'Rule: EMA 13/21 · Closed candle confirmation',
-        'Source: Binance BTCUSDT',
-        'Current BTC price: '+Number(ticker.price||0).toFixed(2),
-        'Signal candle: '+new Date(signal.candleTime).toISOString()
-      ].join('\n');
-      try {
-        if (!env.TELEGRAM_BOT_TOKEN) throw new Error('TELEGRAM_BOT_TOKEN secret is missing in the Worker');
-        await telegramApiCall(env,'sendMessage',{chat_id:TELEGRAM_CHANNEL_ID,text,disable_web_page_preview:true});
-        const savedSignal = telegram.btcSignalHistory.find(item=>item.id===signal.id);
-        if (savedSignal) savedSignal.telegramDelivered=true;
-        state.telegram=telegram;
-        await putState(stub,state);
-        console.log('BTC Telegram signal delivered', JSON.stringify({timeframe:signal.label,signalId:signal.id}));
-      } catch (error) {
-        const savedSignal = telegram.btcSignalHistory.find(item=>item.id===signal.id);
-        if (savedSignal) { savedSignal.telegramDelivered=false; savedSignal.telegramError=String(error?.message||error); }
-        state.telegram=telegram;
-        await putState(stub,state);
-        console.error('BTC Telegram delivery failed', JSON.stringify({timeframe:signal.label,error:String(error?.message||error)}));
-      }
+    const url = new URL(request.url);
+    const interval = ['15min', '30min', '1H'].includes(url.searchParams.get('interval')) ? url.searchParams.get('interval') : '15min';
+    const authConfigured = !!env.DB;
+    const user = authConfigured ? await getAuthUser(request, env) : null;
+    if (authConfigured && !user) return Response.json({ success: false, error: 'LOGIN_REQUIRED' }, { status: 401, headers });
+    const subscriber = authConfigured ? hasActiveSubscription(user) : true;
+    const seconds = INTERVAL_SECONDS[interval];
+    let candles = [], provider = 'Bitget', health = 'HEALTHY', feedError = null, ticker = null;
+    try {
+      const r = await fetchBitgetCandles(interval, 300);
+      const validation = validateCandles(r.closed, seconds);
+      health = validation.health;
+      if (validation.health === 'HALTED') { feedError = validation.issues.join(', '); }
+      else { candles = r.closed; if (validation.issues.length) feedError = validation.issues.join(', '); }
+      ticker = await fetchBitgetTicker().catch(() => null);
+    } catch (error) {
+      health = 'HALTED';
+      feedError = String(error?.message || error).slice(0, 180);
     }
-    state.telegram=telegram;
-    await putState(stub,state);
+    let bucket = null, htfDirection = null, trades = [], activeTrades = [];
+    if (env.TRADE_STATE) {
+      try {
+        const stub = env.TRADE_STATE.get(env.TRADE_STATE.idFromName('btc'));
+        const state = await getState(stub);
+        const smc = state?.smc?.btc || {};
+        bucket = smc[interval] || null;
+        const htf = htfInterval('btc', interval);
+        htfDirection = htf ? smc[htf]?.structureDirection || null : null;
+        trades = dedupeSmcTrades([...(bucket?.trades || []), ...(bucket?.activeTrades || [])]);
+        activeTrades = Array.isArray(bucket?.activeTrades) ? bucket.activeTrades : [];
+      } catch (_) {}
+    }
+    const analysis = candles.length >= 40 ? analyzeSmc(candles, { market: 'btc', htfDirection }) : null;
+    const active = activeTrades[0] || null;
+    const summary = summarizeTrades(trades);
+    const base = {
+      success: true, strategy: { id: SMC_RULE_VERSION, name: 'BTC SMC · Sweep/MSS/BOS/OB/FVG', symbol: 'BTCUSDT', interval },
+      market: { symbol: 'BTCUSDT', interval },
+      dataProvider: { name: provider, health, lastError: feedError },
+      liveSignalsEnabled: liveSignalsEnabled(env),
+      history: { summary, trades },
+    };
+    if (!subscriber) {
+      return Response.json({ ...base, member: { subscriptionStatus: 'inactive' }, signal: { direction: 'LOCKED' }, tradePlan: null, activeTrade: null, activeTrades: [], candles: [] }, { headers });
+    }
+    return Response.json({
+      ...base,
+      market: {
+        symbol: 'BTCUSDT', interval,
+        price: ticker?.last ?? candles.at(-1)?.close ?? null,
+        lastCandleTime: candles.at(-1)?.time ?? null, candleCount: candles.length,
+      },
+      candles,
+      signal: analysis?.signal ?? { direction: 'WAIT' },
+      tradePlan: active ? { entry: active.entry, stopLoss: active.stopLoss, tp1: active.tp1, tp2: active.tp2, tp3: active.tp3, tp4: active.tp4, risk: active.risk } : (analysis?.tradePlan ?? null),
+      activeTrade: active, activeTrades,
+      diagnostics: { ...(analysis?.diagnostics || {}), feed: { health, error: feedError } },
+    }, { headers });
   } catch (error) {
-    console.error('BTC signal scan failed', String(error?.message||error));
+    return Response.json({ success: false, error: String(error?.message || error) }, { status: 503, headers });
   }
 }
 
@@ -858,61 +619,91 @@ async function sendTelegramBroadcast(env,text,telegram){
   }
   return{total:active.length,delivered,failed};
 }
+// Confirmation labels shown in every signal message (KB format).
+function confirmationLines(trade) {
+  const c = trade?.confirmations || {};
+  const lines = [];
+  if (c.sweep) lines.push('Liquidity Sweep');
+  if (c.mss) lines.push('MSS');
+  if (c.bos) lines.push('BOS');
+  if (c.orderBlock) lines.push('Order Block');
+  if (c.fvg) lines.push('FVG');
+  if (c.erc) lines.push('ERC / Displacement');
+  if (c.fvgObConfluence) lines.push('FVG + OB confluence');
+  if (c.htfAligned) lines.push('HTF aligned');
+  return lines.length ? lines : ['SMC sequence confirmed'];
+}
+
 async function sendTelegram(env,event,subscribers){
   if(!env.TELEGRAM_BOT_TOKEN)return false;
   const activeSubscribers=(subscribers||[]).filter(s=>s.active===true&&String(s.chatId));
   if(!activeSubscribers.length)return false;
-  const trade=event.trade,tf=event.interval==='1min'?'1M':'5M';
+  const trade=event.trade;
+  const market=event.market||trade?.market||'xau';
+  const marketLabel=market==='btc'?'BTCUSD':'XAUUSD';
+  const symbol=market==='btc'?'BTCUSDT':'XAU/USD';
+  const tf=tfLabel(event.interval);
+  const planLines=[
+    `🎯 Entry: ${trade.entry}`,
+    `🛑 SL: ${trade.stopLoss}`,
+    `1️⃣ TP1: ${trade.tp1}`,
+    `2️⃣ TP2: ${trade.tp2}`,
+    `3️⃣ TP3: ${trade.tp3}`,
+    `4️⃣ TP4: ${trade.tp4}`,
+  ];
+  const statusLine = (t, extra) => `${t}\n\n${marketLabel} — ${trade.direction}\nTimeframe: ${tf}\n\n` + planLines.join('\n') + (extra ? '\n\n' + extra : '');
   let text;
   if(event.type==='SIGNAL'){
-    const nb=trade.news?.bias||'NEUTRAL';
-    const ni=trade.news?.highImpactRecent?'⚠️ HIGH-IMPACT NEWS':'📰 News: '+nb;
-    text=['🟢 WAJID SWING LIQUIDITY',`XAU/USD · ${tf}`,'',`📈 SIGNAL: ${trade.direction}`,`🎯 Entry: ${trade.entry}`,`🛑 SL: ${trade.stopLoss}`,`1️⃣ TP1: ${trade.tp1} (1R)`,`2️⃣ TP2: ${trade.tp2} (2R)`,`3️⃣ TP3: ${trade.tp3} (3R milestone)`,`4️⃣ TP4: ${trade.tp4} (4R full target)`,`📊 Probability: ${trade.probability}%`,`⭐ Score: ${trade.score}`,ni,'','🔒 Server controlled · Non-repainting'].join('\n');
-  }else if(event.type==='TP1')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP1 REACHED · +1R milestone\nEntry: ${trade.entry}\nTP1: ${trade.tp1}\nStatus: monitoring TP2–TP4`;
-  else if(event.type==='TP2')text=`🟡 WAJID ${tf} · XAU/USD\n\nTP2 REACHED · +2R milestone\nEntry: ${trade.entry}\nTP2: ${trade.tp2}\nStatus: OPEN · monitoring TP3–TP4 or Entry SL`;
-  else if(event.type==='TP3')text=`🟠 WAJID ${tf} · XAU/USD\n\nTP3 REACHED · +3R milestone\nEntry: ${trade.entry}\nTP3: ${trade.tp3}\nStatus: OPEN · monitoring TP4 or Entry SL`;
-  else if(event.type==='TP4')text=`🏆🔥 WAJID ${tf} · XAU/USD\n\n✅ FULL TP HIT · TP4 reached\nEntry: ${trade.entry}\nTP4: ${trade.tp4}\nResult: FULL TP HIT`;
-  else if(event.type==='SL_AFTER_TP2')text=`🟠 WAJID ${tf} · XAU/USD\n\nCLOSED · Entry SL after TP2/TP3\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: +1R realized`;
-  else if(event.type==='LOSS')text=`🔴 WAJID ${tf} · XAU/USD\n\n❌ LOSS · SL reached\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: -1R`;
-  else if(event.type==='BREAK_EVEN')text=`⚪ WAJID ${tf} · XAU/USD\n\n↔️ BREAK-EVEN · SL at Entry\nEntry: ${trade.entry}\nSL: ${trade.stopLoss}\nResult: 0R · TP1 was reached`;
-  else return false;
-
-  const messageIds={},failedChatIds=[];
-  let lastError=null;
+    const emoji = trade.direction==='BUY' ? '🟢' : '🔴';
+    text=`${emoji} WAJID AI TRADING SIGNAL\n\n${marketLabel} — ${trade.direction}\n\nTimeframe: ${tf}\n\n`+planLines.join('\n')+`\n\nRisk: ${trade.risk} · TP1 1R · TP2 2R · TP3 3R · TP4 4R\n\nCONFIRMATION:\n`+confirmationLines(trade).map(l=>`- ${l}`).join('\n')+`\n\nStatus: CONFIRMED`;
+  } else if(event.type==='TP1') {
+    text=statusLine('🟡 TP1 HIT — SL moved to Entry.', 'Trade remains OPEN · monitoring TP2–TP4');
+  } else if(event.type==='TP2') {
+    // KB language: TP2 is a milestone only — the trade is NOT completed.
+    text=statusLine('🟡 TP2 HIT — milestone (not a completed trade).', 'Trade remains OPEN · SL at Entry · monitoring TP3–TP4');
+  } else if(event.type==='TP3') {
+    text=statusLine('🟡 TP3 HIT.', 'Trade remains OPEN · monitoring TP4');
+  } else if(event.type==='TP4') {
+    text=statusLine('✅ TP4 HIT — Trade completed successfully.', 'Realised R: ' + (trade.realizedR ?? ''));
+  } else if(event.type==='BREAK_EVEN') {
+    text=statusLine('↔️ BREAK-EVEN — SL at Entry.', 'Trade closed at 0R.');
+  } else {
+    text=statusLine('❌ SL HIT — Trade closed.', 'Realised R: ' + (trade.realizedR ?? ''));
+  }
+  const messageIds = {};
   for(const subscriber of activeSubscribers){
-    const chatId=String(subscriber.chatId);
-    const payload={chat_id:chatId,text};
-    // Telegram reply keyboards are only valid in private chats.
-    // Premium channel posts must not include a reply keyboard.
-    if(chatId!==TELEGRAM_CHANNEL_ID) payload.reply_markup=telegramKeyboard();
-    const original=trade.telegramMessageIds?.[chatId];
-    if(event.type!=='SIGNAL'&&Number.isFinite(Number(original))){
-      payload.reply_parameters={message_id:Number(original),allow_sending_without_reply:true};
-    }
-    let delivered=false;
-    for(let attempt=0;attempt<3;attempt++){
-      try{
-        const data=await telegramApiCall(env,'sendMessage',payload);
-        if(data?.message_id){
-          messageIds[chatId]=data.message_id;
-          delivered=true;
-          break;
-        }
-        lastError='Telegram sendMessage returned no message_id';
-      }catch(error){
-        lastError=error?.message||String(error);
+    const chatId = subscriber.chatId;
+    let payload = {chat_id: chatId, text, disable_web_page_preview: true};
+    if(event.type!=='SIGNAL' && messageIds[chatId]) payload.reply_parameters = {message_id: messageIds[chatId]};
+    if(chatId!==resolveChannelId(env)) payload.reply_markup=telegramKeyboard();
+    try{
+      const data=await telegramApiCall(env,'sendMessage',payload);
+      if(data?.message_id){
+        if(event.type==='SIGNAL') messageIds[chatId]=data.message_id;
+        else messageIds[chatId]=messageIds[chatId]||data.message_id;
       }
-      if(attempt<2) await new Promise(resolve=>setTimeout(resolve,500*(attempt+1)));
-    }
-    if(!delivered){
-      failedChatIds.push(chatId);
-      console.error('telegram delivery failed',JSON.stringify({
-        type:event.type,interval:event.interval,chatId,signalTime:trade?.signalTime||null,error:lastError
-      }));
+      if(data?.ok===false){
+        if(data.error_code===400&&data.description&&data.description.toLowerCase().includes('message to reply not found')) continue;
+        if(data.error_code===403) continue;
+        throw new Error('Telegram API error: '+(data.description||'unknown'));
+      }
+      if(!data?.message_id) throw new Error('Telegram response missing message_id');
+    }catch(error){
+      console.error('sendTelegram failed', trade.id, chatId, error?.message || error);
+      if(String(error?.message || error).includes('bot was blocked by the user')){
+        try{
+          if(env.DB){
+            const row=await env.DB.prepare('SELECT id FROM telegram_subscribers WHERE chat_id=?').bind(chatId).first();
+            if(row) await env.DB.prepare('UPDATE telegram_subscribers SET active=0, updated_at=? WHERE id=?').bind(Date.now(),row.id).run();
+          }
+        }catch(_){}
+      }
+      return false;
     }
   }
-  return {messageIds,failedChatIds,ok:failedChatIds.length===0,error:failedChatIds.length?(lastError||'TELEGRAM_DELIVERY_FAILED'):null};
+  return { messageIds, failedChatIds: [], ok: true };
 }
+
 function telegramEventKey(event, chatId){
   const tradeId = event?.trade?.id || `${event?.interval || ''}:${event?.trade?.signalTime || ''}:${event?.trade?.direction || ''}`;
   return `${chatId}:${event?.type || ''}:${event?.interval || ''}:${tradeId}:${event?.candleTime || ''}`;
@@ -928,11 +719,24 @@ function enqueuePendingTelegram(telegram, event, chatId){
 }
 
 async function sendTelegramWithQueue(env,event,telegram){
-  const active=[{chatId:TELEGRAM_CHANNEL_ID,active:true,source:'channel'}];
+  const channelId = resolveChannelId(env, telegram);
+  const active=[{chatId:channelId,active:true,source:'channel'}];
   if(!Array.isArray(telegram.sentKeys)) telegram.sentKeys=[];
   const pendingActive=active.filter(s=>!telegram.sentKeys.includes(telegramEventKey(event,String(s.chatId))));
   if(!pendingActive.length)return {messageIds:{},failedChatIds:[],ok:true,reason:active.length?'ALREADY_DELIVERED':'NO_ACTIVE_SUBSCRIBERS'};
   const result=await sendTelegram(env,event,pendingActive,telegram); telegram.lastDelivery={type:event?.type||null,interval:event?.interval||null,signalTime:event?.trade?.signalTime||null,attemptedAt:Date.now(),activeSubscribers:pendingActive.length,delivered:Object.keys(result?.messageIds||{}).length,failed:(result?.failedChatIds||[]).length,error:result?.error||null};
+  // Persistent delivery log (Durable Object state, capped at 500 entries):
+  // message, dedup key, status, attempts, timestamp. Never stores secrets.
+  if (!Array.isArray(telegram.deliveryLog)) telegram.deliveryLog = [];
+  const logDelivery = (chatId, status, messageId, error) => {
+    telegram.deliveryLog.push({
+      dedupKey: telegramEventKey(event, String(chatId)), type: event?.type || null,
+      market: event?.market || null, interval: event?.interval || null,
+      tradeId: event?.trade?.id || null, chatId: String(chatId), status,
+      messageId: messageId || null, error: error || null, at: Date.now(),
+    });
+    if (telegram.deliveryLog.length > 500) telegram.deliveryLog = telegram.deliveryLog.slice(-500);
+  };
   if(result===false){
     for(const subscriber of pendingActive) enqueuePendingTelegram(telegram,event,String(subscriber.chatId));
     return {messageIds:{},failedChatIds:pendingActive.map(s=>String(s.chatId)),ok:false,reason:'TELEGRAM_SEND_UNAVAILABLE'};
@@ -943,7 +747,28 @@ async function sendTelegramWithQueue(env,event,telegram){
     if(!telegram.sentKeys.includes(key)) telegram.sentKeys.push(key);
   }
   if(telegram.sentKeys.length>5000)telegram.sentKeys=telegram.sentKeys.slice(-5000);
+  if (result === false) {
+    for (const a of pendingActive) logDelivery(a.chatId, 'FAILED', null, result?.error || 'Telegram send failed');
+  } else {
+    for (const a of pendingActive) logDelivery(a.chatId, result?.messageIds?.[String(a.chatId)] ? 'DELIVERED' : 'FAILED', result?.messageIds?.[String(a.chatId)] || null, result?.error || null);
+  }
   return result;
+}
+
+// Labelled connectivity test: sends a plain test message (no prices, no
+// entry, no trade) to the Premium Channel. Never sends a fake signal.
+async function sendTelegramTest(env, telegram) {
+  if (!env.TELEGRAM_BOT_TOKEN) return { ok: false, error: 'TELEGRAM_BOT_TOKEN is not configured' };
+  const channelId = resolveChannelId(env, telegram);
+  const text = '🧪 WAJID TEST — Telegram connectivity check\n\nThis is a test message, not a trading signal.\nNo prices, no entry, no trade.\nTime: ' + new Date().toISOString();
+  try {
+    const data = await telegramApiCall(env, 'sendMessage', { chat_id: channelId, text, disable_web_page_preview: true });
+    if (!Array.isArray(telegram.deliveryLog)) telegram.deliveryLog = [];
+    telegram.deliveryLog.push({ dedupKey: 'test:' + Date.now(), type: 'TEST', market: null, interval: null, tradeId: null, chatId: channelId, status: data?.message_id ? 'DELIVERED' : 'FAILED', messageId: data?.message_id || null, error: null, at: Date.now() });
+    return { ok: !!data?.message_id, messageId: data?.message_id || null };
+  } catch (error) {
+    return { ok: false, error: String(error?.message || error).slice(0, 200) };
+  }
 }
 
 async function retryPendingTelegram(env,telegram){
@@ -953,9 +778,9 @@ async function retryPendingTelegram(env,telegram){
   for(const item of telegram.pending.slice(0,100)){
     if(!item?.event || !item?.chatId) continue;
     if(Number(item.nextAttemptAt||0)>now){remaining.push(item);continue;}
-    const isChannel=String(item.chatId)===String(telegram.channelId||TELEGRAM_CHANNEL_ID);
+    const isChannel=String(item.chatId)===String(resolveChannelId(env, telegram));
     const subscriber=isChannel
-      ? {chatId:String(telegram.channelId||TELEGRAM_CHANNEL_ID),active:true,source:'channel'}
+      ? {chatId:String(resolveChannelId(env, telegram)),active:true,source:'channel'}
       : telegram.subscribers?.find(s=>String(s.chatId)===String(item.chatId));
     if(!subscriber || subscriber.active!==true) continue;
     const result=await sendTelegram(env,item.event,[subscriber]);
